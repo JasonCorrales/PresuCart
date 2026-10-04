@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateBudgetSummary, getAlertState, itemSubtotal } from "@/domain/budget";
-import { extractPriceCandidates } from "@/domain/ocrPrice";
+import { extractPriceCandidates, formatOcrCandidateAmount } from "@/domain/ocrPrice";
 import { formatCRC, formatSignedCRC, parseCRC } from "@/domain/money";
 import { adjustQuantityInput, normalizeOptionalText, parsePositiveCRCAmount, parsePositiveQuantity } from "@/domain/purchaseInput";
 
@@ -117,6 +117,20 @@ describe("OCR price extraction", () => {
     const candidates = extractPriceCandidates("Etiqueta: 1250 y promo 4,750");
 
     expect(candidates.map((candidate) => candidate.amount)).toEqual([1250, 4750]);
+  });
+
+  it("deduplicates noisy camera OCR output while preserving first-seen prices", () => {
+    const candidates = extractPriceCandidates("CAMARA borrosa ₡2.500 precio 2500 total ₡7.500");
+
+    expect(candidates).toEqual([
+      { amount: 2500, raw: "₡2.500" },
+      { amount: 7500, raw: "₡7.500" },
+    ]);
+  });
+
+  it("shows OCR candidates without separators that look like decimals", () => {
+    expect(formatOcrCandidateAmount(1250)).toBe("₡1250");
+    expect(formatOcrCandidateAmount(2500)).toBe("₡2500");
   });
 
   it("returns no OCR price when text has no valid amount", () => {

@@ -1,4 +1,4 @@
-import { parseCRC } from "./money";
+import { assertIntegerMoney, parseCRC } from "./money";
 
 export type PriceCandidate = {
   amount: number;
@@ -22,4 +22,9 @@ export function extractPriceCandidates(text: string): PriceCandidate[] {
   }
 
   return candidates;
+}
+
+export function formatOcrCandidateAmount(amount: number): string {
+  assertIntegerMoney(amount, "amount");
+  return `₡${amount}`;
 }

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
+import { OcrPriceScanner } from "@/components/OcrPriceScanner";
 import { SessionHeader } from "@/components/SessionHeader";
 import { SetupNotice } from "@/components/SetupNotice";
 import { calculateBudgetSummary, itemSubtotal } from "@/domain/budget";
@@ -112,6 +113,11 @@ export default function PurchasePage() {
 
   function resetQuickQuantity() {
     setQuantityInput("1");
+  }
+
+  function handleOcrCandidate(amount: number) {
+    setUnitPriceInput(String(amount));
+    setMessage("Precio detectado listo. Revisa la cantidad y presiona agregar al carrito.");
   }
 
   function setEditQuickQuantity(delta: number) {
@@ -302,6 +308,7 @@ export default function PurchasePage() {
                   placeholder="₡2.500"
                 />
               </label>
+              <OcrPriceScanner onSelectCandidate={handleOcrCandidate} />
               <QuantityField
                 value={quantityInput}
                 onChange={setQuantityInput}
