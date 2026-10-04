@@ -67,6 +67,17 @@ Status: in progress
 - [x] Task 20: Add Phase 5 tests and documentation for purchase history, reopening, and checkout flows.
   - Evidence: added purchase-history domain utility coverage in `tests/domain.test.ts` and updated README usage/manual verification for history, reopening, checkout, and database-level finalized immutability. `npm run test` passed 21/21 tests and `npm run build` completed successfully.
 
+### Phase 6 — Optional product identification and barcode
+
+- [x] Task 21: Add optional product name and barcode capture without slowing quick add.
+  - Evidence: active `/purchases/[id]` add form now includes Spanish mobile-first optional product name and barcode/manual code inputs while preserving required price-only quick add.
+- [x] Task 22: Reuse or create user-owned products when optional product data is supplied.
+  - Evidence: add flow normalizes optional identity, looks up existing user-owned products by barcode, creates user-owned products for new barcode/name identity, retries barcode reuse on unique-conflict races, and leaves price-only rows productless.
+- [x] Task 23: Persist product links and snapshots on purchase items for price history readiness.
+  - Evidence: purchase item insert now writes `product_id` and `product_name_snapshot` when identity exists, with barcode fallback labels, and item cards display snapshots while keeping price/subtotal dominant.
+- [x] Task 24: Add Phase 6 tests and documentation for product/barcode identification flows.
+  - Evidence: added `domain/productIdentity.ts` with Vitest coverage for optional identity normalization and snapshot labels; updated README Phase 6 usage and manual verification. `npm run test` passed 24/24 tests and `npm run build` completed successfully.
+
 ## Commit evidence
 
 - `29e8f00` — `feat: bootstrap PresuCart foundation`
@@ -74,3 +85,4 @@ Status: in progress
 - `0f413da` — `feat: improve active shopping corrections`
 - `0c7a9a4` — `merge: phase 3 active shopping corrections`
 - `a110b91` — `feat: add OCR price scanner`
+- `c1b32d0` — `feat: add purchase history checkout`

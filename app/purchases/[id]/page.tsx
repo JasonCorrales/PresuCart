@@ -8,9 +8,10 @@ import { SessionHeader } from "@/components/SessionHeader";
 import { SetupNotice } from "@/components/SetupNotice";
 import { calculateBudgetSummary, itemSubtotal } from "@/domain/budget";
 import { formatCRC, formatSignedCRC } from "@/domain/money";
+import { getProductSnapshotLabel, hasProductIdentity, normalizeOptionalProductIdentity } from "@/domain/productIdentity";
 import { adjustQuantityInput, parsePositiveCRCAmount, parsePositiveQuantity } from "@/domain/purchaseInput";
 import { createBrowserSupabaseClient } from "@/services/supabase";
-import type { Purchase, PurchaseItem } from "@/types/database";
+import type { Product, Purchase, PurchaseItem } from "@/types/database";
 
 type AlertCopy = {
   label: string;
@@ -40,6 +41,8 @@ export default function PurchasePage() {
   const [items, setItems] = useState<PurchaseItem[]>([]);
   const [unitPriceInput, setUnitPriceInput] = useState("");
   const [quantityInput, setQuantityInput] = useState("1");
+  const [productNameInput, setProductNameInput] = useState("");
+  const [barcodeInput, setBarcodeInput] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -124,6 +127,67 @@ export default function PurchasePage() {
     setMessage("Precio detectado listo. Revisa la cantidad y presiona agregar al carrito.");
   }
 
+  async function resolveProductForItem(identity: ReturnType<typeof normalizeOptionalProductIdentity>) {
+    if (!supabase || !user || !hasProductIdentity(identity)) {
+      return { product_id: null, product_name_snapshot: null };
+    }
+
+    if (identity.barcode) {
+      const { data: existingProduct, error: lookupError } = await supabase
+        .from("products")
+        .select("*")
+        .eq("owner_id", user.id)
+        .eq("barcode", identity.barcode)
+        .maybeSingle();
+
+      if (lookupError) throw new Error(lookupError.message);
+
+      if (existingProduct) {
+        const product = existingProduct as Product;
+        const snapshotLabel = getProductSnapshotLabel({
+          name: identity.name ?? product.name,
+          barcode: product.barcode ?? identity.barcode,
+        });
+        return { product_id: product.id, product_name_snapshot: snapshotLabel };
+      }
+    }
+
+    const { data: createdProduct, error: createError } = await supabase
+      .from("products")
+      .insert({ owner_id: user.id, name: identity.name, barcode: identity.barcode })
+      .select("*")
+      .single();
+
+    if (createError) {
+      if (identity.barcode && createError.code === "23505") {
+        const { data: concurrentProduct, error: retryError } = await supabase
+          .from("products")
+          .select("*")
+          .eq("owner_id", user.id)
+          .eq("barcode", identity.barcode)
+          .maybeSingle();
+
+        if (retryError) throw new Error(retryError.message);
+        if (concurrentProduct) {
+          const product = concurrentProduct as Product;
+          const snapshotLabel = getProductSnapshotLabel({
+            name: identity.name ?? product.name,
+            barcode: product.barcode ?? identity.barcode,
+          });
+          return { product_id: product.id, product_name_snapshot: snapshotLabel };
+        }
+      }
+
+      throw new Error(createError.message);
+    }
+
+    const product = createdProduct as Product;
+    return {
+      product_id: product.id,
+      product_name_snapshot: getProductSnapshotLabel({ name: product.name, barcode: product.barcode }),
+    };
+  }
+
   function setEditQuickQuantity(delta: number) {
     if (purchase?.status !== "activa") return;
     setEditQuantityInput((current) => adjustQuantityInput(current, delta));
@@ -145,11 +209,28 @@ export default function PurchasePage() {
       return;
     }
 
+    const productIdentity = normalizeOptionalProductIdentity(productNameInput, barcodeInput);
+
     setIsSaving(true);
     setMessage(null);
+    let productFields: { product_id: string | null; product_name_snapshot: string | null };
+    try {
+      productFields = await resolveProductForItem(productIdentity);
+    } catch (error) {
+      setIsSaving(false);
+      setMessage(error instanceof Error ? error.message : "No se pudo guardar el producto.");
+      return;
+    }
+
     const { data, error } = await supabase
       .from("purchase_items")
-      .insert({ purchase_id: purchase.id, unit_price_amount: parsedPrice.amount, quantity: parsedQuantity.quantity })
+      .insert({
+        purchase_id: purchase.id,
+        product_id: productFields.product_id,
+        product_name_snapshot: productFields.product_name_snapshot,
+        unit_price_amount: parsedPrice.amount,
+        quantity: parsedQuantity.quantity,
+      })
       .select("*")
       .single();
     setIsSaving(false);
@@ -164,10 +245,14 @@ export default function PurchasePage() {
     setItems(nextItems);
     setUndoAdd({
       itemId: createdItem.id,
-      label: `${formatCRC(createdItem.unit_price_amount)} × ${createdItem.quantity}`,
+      label: createdItem.product_name_snapshot
+        ? `${createdItem.product_name_snapshot}: ${formatCRC(createdItem.unit_price_amount)} × ${createdItem.quantity}`
+        : `${formatCRC(createdItem.unit_price_amount)} × ${createdItem.quantity}`,
     });
     setUnitPriceInput("");
     setQuantityInput("1");
+    setProductNameInput("");
+    setBarcodeInput("");
     await syncStoredTotal(nextItems);
   }
 
@@ -363,6 +448,33 @@ export default function PurchasePage() {
                 />
               </label>
               <OcrPriceScanner onSelectCandidate={handleOcrCandidate} />
+              <fieldset className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4">
+                <legend className="px-1 text-sm font-black text-presucart-tinta">Identificar producto (opcional)</legend>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Si tenés tiempo, agregá nombre o código para reconocerlo después. El código no cambia el precio.
+                </p>
+                <div className="mt-3 space-y-3">
+                  <label className="block text-sm font-bold text-presucart-tinta">
+                    Nombre del producto
+                    <input
+                      value={productNameInput}
+                      onChange={(event) => setProductNameInput(event.target.value)}
+                      className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 px-4 text-base font-bold"
+                      placeholder="Ej. Leche 1L"
+                    />
+                  </label>
+                  <label className="block text-sm font-bold text-presucart-tinta">
+                    Código de barras o código manual
+                    <input
+                      inputMode="text"
+                      value={barcodeInput}
+                      onChange={(event) => setBarcodeInput(event.target.value)}
+                      className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 px-4 text-base font-bold"
+                      placeholder="Escaneado o escrito"
+                    />
+                  </label>
+                </div>
+              </fieldset>
               <QuantityField
                 value={quantityInput}
                 onChange={setQuantityInput}
@@ -437,6 +549,7 @@ export default function PurchasePage() {
                     ) : (
                       <div className="flex items-center justify-between gap-3">
                         <div>
+                          {item.product_name_snapshot ? <p className="text-sm font-bold text-slate-600">{item.product_name_snapshot}</p> : null}
                           <p className="font-black text-presucart-tinta">
                             {formatCRC(item.unit_price_amount)} × {item.quantity}
                           </p>
