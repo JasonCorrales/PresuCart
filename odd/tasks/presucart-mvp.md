@@ -45,7 +45,20 @@ Status: in progress
 - [x] Task 12: Add Phase 3 tests and documentation for active-shopping correction flows.
   - Evidence: added quantity validation/adjustment utility tests and README Phase 3 manual verification steps. `npm run test` passed 17/17 tests and `npm run build` completed successfully.
 
+### Phase 4 — Camera and local OCR price capture
+
+- [x] Task 13: Add camera scanner panel inside the active purchase screen.
+  - Evidence: added `OcrPriceScanner` to `/purchases/[id]` near manual price entry with `Escanear precio`, browser `getUserMedia`, close/stop camera controls, unsupported/permission fallback messages, and no image persistence.
+- [x] Task 14: Add local OCR processing and price candidate selection.
+  - Evidence: added Tesseract.js OCR processing on a temporary canvas frame, `Procesando...` progress, reuse of `extractPriceCandidates`, CRC candidate buttons, and no-candidate fallback copy.
+- [x] Task 15: Connect confirmed OCR candidates to the existing add-item flow.
+  - Evidence: selecting a candidate fills the existing manual unit price input and instructs the user to review quantity and press add; OCR never inserts an item automatically.
+- [x] Task 16: Add Phase 4 tests and documentation for OCR fallback and verification.
+  - Evidence: added noisy OCR dedupe coverage in `tests/domain.test.ts`, documented Phase 4 camera/OCR behavior and manual verification in README. After live OCR testing, scanner candidate buttons were adjusted to show plain integer colones without thousands separators that can look like decimals. Focused OCR tests passed 5/5 and `npm run build` completed successfully.
+
 ## Commit evidence
 
 - `29e8f00` — `feat: bootstrap PresuCart foundation`
 - `f38c1fb` — `feat: add Supabase auth and manual purchase flow`
+- `0f413da` — `feat: improve active shopping corrections`
+- `0c7a9a4` — `merge: phase 3 active shopping corrections`
