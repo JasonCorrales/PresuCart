@@ -49,6 +49,7 @@ export default function PurchasePage() {
   const [editUnitPriceInput, setEditUnitPriceInput] = useState("");
   const [editQuantityInput, setEditQuantityInput] = useState("1");
   const [isUpdatingItemId, setIsUpdatingItemId] = useState<string | null>(null);
+  const [isFinalizing, setIsFinalizing] = useState(false);
 
   useEffect(() => {
     if (!supabase) {
@@ -99,7 +100,7 @@ export default function PurchasePage() {
   }, [items, purchase]);
 
   async function syncStoredTotal(nextItems: PurchaseItem[]) {
-    if (!supabase || !purchase) return;
+    if (!supabase || !purchase || purchase.status !== "activa") return;
     const nextTotal = nextItems.reduce(
       (total, item) => total + itemSubtotal({ unitPrice: item.unit_price_amount, quantity: item.quantity }),
       0,
@@ -108,25 +109,29 @@ export default function PurchasePage() {
   }
 
   function setQuickQuantity(delta: number) {
+    if (purchase?.status !== "activa") return;
     setQuantityInput((current) => adjustQuantityInput(current, delta));
   }
 
   function resetQuickQuantity() {
+    if (purchase?.status !== "activa") return;
     setQuantityInput("1");
   }
 
   function handleOcrCandidate(amount: number) {
+    if (purchase?.status !== "activa") return;
     setUnitPriceInput(String(amount));
     setMessage("Precio detectado listo. Revisa la cantidad y presiona agregar al carrito.");
   }
 
   function setEditQuickQuantity(delta: number) {
+    if (purchase?.status !== "activa") return;
     setEditQuantityInput((current) => adjustQuantityInput(current, delta));
   }
 
   async function handleAddItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!supabase || !purchase) return;
+    if (!supabase || !purchase || purchase.status !== "activa") return;
 
     const parsedPrice = parsePositiveCRCAmount(unitPriceInput, "El precio");
     if (!parsedPrice.ok) {
@@ -178,7 +183,7 @@ export default function PurchasePage() {
   }
 
   async function handleUndoAdd() {
-    if (!undoAdd || isUndoingItemId) return;
+    if (!undoAdd || isUndoingItemId || purchase?.status !== "activa") return;
     const itemId = undoAdd.itemId;
     const itemStillExists = items.some((item) => item.id === itemId);
     if (!itemStillExists) {
@@ -198,6 +203,7 @@ export default function PurchasePage() {
   }
 
   async function handleDeleteItem(itemId: string) {
+    if (purchase?.status !== "activa") return;
     const nextItems = items.filter((item) => item.id !== itemId);
     setItems(nextItems);
     if (undoAdd?.itemId === itemId) setUndoAdd(null);
@@ -206,6 +212,7 @@ export default function PurchasePage() {
   }
 
   function startEditing(item: PurchaseItem) {
+    if (purchase?.status !== "activa") return;
     setEditingItemId(item.id);
     setEditUnitPriceInput(String(item.unit_price_amount));
     setEditQuantityInput(String(item.quantity));
@@ -219,7 +226,7 @@ export default function PurchasePage() {
   }
 
   async function handleSaveEdit(itemId: string) {
-    if (!supabase || !purchase) return;
+    if (!supabase || !purchase || purchase.status !== "activa") return;
 
     const parsedPrice = parsePositiveCRCAmount(editUnitPriceInput, "El precio");
     if (!parsedPrice.ok) {
@@ -257,8 +264,36 @@ export default function PurchasePage() {
     await syncStoredTotal(nextItems);
   }
 
+  async function handleFinalizePurchase() {
+    if (!supabase || !purchase || !summary || purchase.status !== "activa") return;
+
+    setIsFinalizing(true);
+    setMessage(null);
+    const finishedAt = new Date().toISOString();
+    const { data, error } = await supabase
+      .from("purchases")
+      .update({ status: "finalizada", finished_at: finishedAt, total_amount: summary.spent })
+      .eq("id", purchase.id)
+      .eq("owner_id", purchase.owner_id)
+      .select("*")
+      .single();
+    setIsFinalizing(false);
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setPurchase(data as Purchase);
+    setUndoAdd(null);
+    cancelEditing();
+    setMessage("Compra finalizada. Queda guardada solo lectura en el historial.");
+  }
+
   const progressWidth = summary ? `${Math.min(summary.usedPercent, 100)}%` : "0%";
   const currentAlert = summary ? alertCopy[summary.alertState] : alertCopy.normal;
+  const isActive = purchase?.status === "activa";
+  const isFinalized = purchase?.status === "finalizada";
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-md px-5 py-6">
@@ -276,8 +311,8 @@ export default function PurchasePage() {
       ) : (
         <div className="space-y-5">
           <section className="rounded-[2rem] bg-presucart-tinta p-5 text-white shadow-xl">
-            <p className="text-sm font-bold uppercase tracking-[0.2em] text-emerald-200">Compra activa</p>
-            <h1 className="mt-2 text-3xl font-black">{purchase.store_name_snapshot ?? "Sin supermercado"}</h1>
+            <p className="text-sm font-bold uppercase tracking-[0.2em] text-emerald-200">Compra {purchase.status}</p>
+            <h1 className="mt-2 text-3xl font-black">{purchase.store_name_snapshot ?? "Supermercado sin nombre"}</h1>
             <div className="mt-5 rounded-[1.5rem] bg-white p-4 text-presucart-tinta">
               <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-700">Disponible</p>
               <p className="mt-1 text-4xl font-black leading-none">{formatSignedCRC(summary.available)}</p>
@@ -291,9 +326,28 @@ export default function PurchasePage() {
               <div className="h-full rounded-full bg-emerald-300" style={{ width: progressWidth }} />
             </div>
             <p className={`mt-4 rounded-2xl px-4 py-3 text-sm font-black ${currentAlert.className}`}>{currentAlert.label}</p>
+            {isActive ? (
+              <button
+                type="button"
+                onClick={handleFinalizePurchase}
+                disabled={isFinalizing}
+                className="mt-4 min-h-14 w-full rounded-2xl bg-emerald-500 px-5 py-4 text-lg font-black text-white disabled:bg-slate-300"
+              >
+                {isFinalizing ? "Finalizando..." : "Finalizar compra"}
+              </button>
+            ) : (
+              <p className="mt-4 rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-emerald-50">
+                {isFinalized
+                  ? "Esta compra ya fue finalizada y queda solo lectura. No puedes agregar, editar, borrar ni deshacer ítems."
+                  : "Esta compra no está activa y queda solo lectura."}
+              </p>
+            )}
           </section>
 
-          <section className="rounded-[2rem] bg-white p-5 shadow-xl">
+          {message ? <p className="rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-900">{message}</p> : null}
+
+          {isActive ? (
+            <section className="rounded-[2rem] bg-white p-5 shadow-xl">
             <h2 className="text-2xl font-black text-presucart-tinta">Agregar precio</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">Flujo rápido: escribe precio, ajusta cantidad con botones grandes y sigue caminando.</p>
             <form className="mt-5 space-y-4" onSubmit={handleAddItem}>
@@ -316,7 +370,6 @@ export default function PurchasePage() {
                 onIncrement={() => setQuickQuantity(1)}
                 onReset={resetQuickQuantity}
               />
-              {message ? <p className="rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-900">{message}</p> : null}
               {undoAdd ? (
                 <div className="rounded-2xl border-2 border-emerald-600 bg-emerald-50 p-4">
                   <p className="text-sm font-bold text-emerald-900">Agregado: {undoAdd.label}</p>
@@ -338,7 +391,8 @@ export default function PurchasePage() {
                 {isSaving ? "Agregando..." : "Agregar al carrito"}
               </button>
             </form>
-          </section>
+            </section>
+          ) : null}
 
           <section className="space-y-3">
             <h2 className="text-xl font-black text-presucart-tinta">Ítems agregados</h2>
@@ -388,14 +442,16 @@ export default function PurchasePage() {
                           </p>
                           <p className="text-sm text-slate-600">Subtotal {formatCRC(itemSubtotal({ unitPrice: item.unit_price_amount, quantity: item.quantity }))}</p>
                         </div>
-                        <div className="flex flex-col gap-2">
-                          <button type="button" onClick={() => startEditing(item)} className="rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-presucart-tinta">
-                            Editar
-                          </button>
-                          <button type="button" onClick={() => handleDeleteItem(item.id)} className="rounded-full bg-red-50 px-4 py-2 text-sm font-bold text-red-700">
-                            Borrar
-                          </button>
-                        </div>
+                        {isActive ? (
+                          <div className="flex flex-col gap-2">
+                            <button type="button" onClick={() => startEditing(item)} className="rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-presucart-tinta">
+                              Editar
+                            </button>
+                            <button type="button" onClick={() => handleDeleteItem(item.id)} className="rounded-full bg-red-50 px-4 py-2 text-sm font-bold text-red-700">
+                              Borrar
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     )}
                   </article>

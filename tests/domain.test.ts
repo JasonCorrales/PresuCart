@@ -3,6 +3,8 @@ import { calculateBudgetSummary, getAlertState, itemSubtotal } from "@/domain/bu
 import { extractPriceCandidates, formatOcrCandidateAmount } from "@/domain/ocrPrice";
 import { formatCRC, formatSignedCRC, parseCRC } from "@/domain/money";
 import { adjustQuantityInput, normalizeOptionalText, parsePositiveCRCAmount, parsePositiveQuantity } from "@/domain/purchaseInput";
+import { getPurchaseAmountSignal, getPurchaseStoreLabel, groupPurchasesByStatus } from "@/domain/purchaseHistory";
+import type { Purchase } from "@/types/database";
 
 describe("money utilities", () => {
   it("formats and parses CRC integer amounts", () => {
@@ -103,6 +105,37 @@ describe("purchase input utilities", () => {
   it("normalizes optional text snapshots", () => {
     expect(normalizeOptionalText("  Palí  ")).toBe("Palí");
     expect(normalizeOptionalText("   ")).toBeNull();
+  });
+});
+
+describe("purchase history utilities", () => {
+  const basePurchase: Purchase = {
+    id: "purchase-1",
+    owner_id: "user-1",
+    store_id: null,
+    store_name_snapshot: null,
+    budget_amount: 75000,
+    total_amount: 50000,
+    status: "activa",
+    started_at: "2026-01-01T10:00:00.000Z",
+    finished_at: null,
+    created_at: "2026-01-01T10:00:00.000Z",
+    updated_at: "2026-01-01T10:00:00.000Z",
+  };
+
+  it("groups active and finalized purchases for history sections", () => {
+    const active = { ...basePurchase, id: "active", status: "activa" as const };
+    const finalized = { ...basePurchase, id: "done", status: "finalizada" as const, finished_at: "2026-01-01T11:00:00.000Z" };
+    const cancelada = { ...basePurchase, id: "cancel", status: "cancelada" as const };
+
+    expect(groupPurchasesByStatus([finalized, active, cancelada])).toEqual({ active: [active], finalized: [finalized] });
+  });
+
+  it("builds store fallback copy and budget availability signal", () => {
+    expect(getPurchaseStoreLabel(basePurchase)).toBe("Supermercado sin nombre");
+    expect(getPurchaseStoreLabel({ ...basePurchase, store_name_snapshot: "  Feria  " })).toBe("Feria");
+    expect(getPurchaseAmountSignal(basePurchase)).toEqual({ available: 25000, isOverBudget: false });
+    expect(getPurchaseAmountSignal({ ...basePurchase, total_amount: 80000 })).toEqual({ available: -5000, isOverBudget: true });
   });
 });
 
