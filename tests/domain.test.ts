@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getBarcodeFormatLabel, normalizeBarcodeScanResult, preferredBarcodeFormats } from "@/domain/barcodeScanner";
 import { calculateBudgetSummary, getAlertState, itemSubtotal } from "@/domain/budget";
 import { extractPriceCandidates, formatOcrCandidateAmount } from "@/domain/ocrPrice";
 import { formatCRC, formatSignedCRC, parseCRC } from "@/domain/money";
@@ -128,6 +129,20 @@ describe("product identity utilities", () => {
 
   it("derives barcode fallback labels for item snapshots", () => {
     expect(getProductSnapshotLabel(normalizeOptionalProductIdentity("", " ABC-123 "))).toBe("Código ABC-123");
+  });
+});
+
+describe("barcode scanner utilities", () => {
+  it("normalizes detected barcode values for the manual code field", () => {
+    expect(normalizeBarcodeScanResult({ rawValue: " 7 441001 234567 " })).toBe("7441001234567");
+    expect(normalizeBarcodeScanResult({ rawValue: "   " })).toBeNull();
+    expect(normalizeBarcodeScanResult(null)).toBeNull();
+  });
+
+  it("keeps grocery barcode formats preferred and labels fallback formats", () => {
+    expect(preferredBarcodeFormats.slice(0, 4)).toEqual(["ean_13", "ean_8", "upc_a", "upc_e"]);
+    expect(getBarcodeFormatLabel("ean_13")).toBe("EAN-13");
+    expect(getBarcodeFormatLabel("unknown_format")).toBe("UNKNOWN FORMAT");
   });
 });
 
