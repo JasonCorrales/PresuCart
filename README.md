@@ -1,6 +1,6 @@
 # PresuCart
 
-PresuCart es una PWA móvil en español para controlar el presupuesto durante compras de supermercado en colones costarricenses (CRC). La Fase 2 agrega autenticación con Supabase, creación de compras por usuario y entrada manual de precios.
+PresuCart es una PWA móvil en español para controlar el presupuesto durante compras de supermercado en colones costarricenses (CRC). La Fase 3 mejora la compra activa con entrada rápida de cantidades, deshacer después de agregar y edición de ítems.
 
 ## Stack
 
@@ -35,14 +35,16 @@ Si faltan variables, la app no debe romper el build: las pantallas muestran una 
 
 El esquema usa UUID, `timestamptz`, montos enteros en colones y `purchase_items.subtotal_amount` generado como `unit_price_amount * quantity`.
 
-## Uso de Fase 2
+## Uso de Fase 3
 
 1. Abrir `/auth` y crear cuenta o iniciar sesión con correo y contraseña.
 2. Ir a `/purchases/new`, ingresar un presupuesto CRC positivo y, opcionalmente, el nombre del supermercado.
 3. La app crea la compra con `owner_id` del usuario autenticado y redirige a `/purchases/[id]`.
-4. En la compra activa, ingresar precio unitario y cantidad para agregar ítems sin producto asociado.
-5. Revisar presupuesto, gastado, disponible, porcentaje usado, barra de progreso y alerta.
-6. Borrar ítems si se ingresaron por error.
+4. En la compra activa, el monto disponible queda destacado como dato principal.
+5. Ingresar precio unitario manualmente y ajustar cantidad con los botones grandes `−` / `+` o con el campo numérico.
+6. Después de agregar, usar `DESHACER` durante unos segundos si el ítem fue registrado por error.
+7. Editar un ítem existente para corregir precio unitario o cantidad sin salir de la pantalla.
+8. Borrar ítems si se ingresaron por error.
 
 Los totales visibles se recalculan en el cliente desde los ítems usando utilidades de dominio; no se confía únicamente en el total almacenado.
 
@@ -53,10 +55,12 @@ Con Supabase configurado:
 1. Crear una cuenta nueva desde `/auth`.
 2. Confirmar correo si tu proyecto Supabase lo exige.
 3. Crear una compra con presupuesto `75000` y supermercado opcional.
-4. Agregar `2500 × 2` y confirmar que gastado sea `₡5.000` y disponible `₡70.000`.
-5. Agregar montos hasta superar 80%, 95% y 100% para revisar las alertas.
-6. Borrar un ítem y confirmar que los totales bajen.
-7. Cerrar sesión y verificar que las rutas de compra soliciten autenticación.
+4. Agregar `2500 × 2` usando el botón `+` y confirmar que gastado sea `₡5.000` y disponible `₡70.000`.
+5. Agregar otro ítem y presionar `DESHACER`; confirmar que desaparece y que los totales vuelven al valor anterior.
+6. Agregar un ítem, tocar `Editar`, cambiar precio y cantidad, guardar y confirmar que subtotal, gastado y disponible se actualicen.
+7. Agregar montos hasta superar 80%, 95% y 100% para revisar las alertas.
+8. Borrar un ítem y confirmar que los totales bajen.
+9. Cerrar sesión y verificar que las rutas de compra soliciten autenticación.
 
 ## Comandos de verificación
 
@@ -69,3 +73,4 @@ npm run build
 
 - Fase 1: base Next.js, Tailwind, Supabase dependency, PWA básica, dominio CRC/presupuesto/OCR y esquema inicial.
 - Fase 2: login/sign up con Supabase Auth, creación de compras autenticadas y entrada manual persistida de precios.
+- Fase 3: compra activa optimizada para móvil con cantidad rápida, acción `DESHACER` tras agregar y edición persistida de precio/cantidad.

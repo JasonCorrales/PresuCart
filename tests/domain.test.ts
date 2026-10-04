@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calculateBudgetSummary, getAlertState, itemSubtotal } from "@/domain/budget";
 import { extractPriceCandidates } from "@/domain/ocrPrice";
 import { formatCRC, formatSignedCRC, parseCRC } from "@/domain/money";
-import { normalizeOptionalText, parsePositiveCRCAmount } from "@/domain/purchaseInput";
+import { adjustQuantityInput, normalizeOptionalText, parsePositiveCRCAmount, parsePositiveQuantity } from "@/domain/purchaseInput";
 
 describe("money utilities", () => {
   it("formats and parses CRC integer amounts", () => {
@@ -85,6 +85,19 @@ describe("purchase input utilities", () => {
     expect(parsePositiveCRCAmount("0", "El precio")).toEqual({ ok: false, message: "El precio debe ser mayor que cero." });
     expect(parsePositiveCRCAmount("", "El precio").ok).toBe(false);
     expect(parsePositiveCRCAmount("12.50", "El precio").ok).toBe(false);
+  });
+
+  it("validates positive integer quantities for add and edit flows", () => {
+    expect(parsePositiveQuantity("3")).toEqual({ ok: true, quantity: 3 });
+    expect(parsePositiveQuantity("0")).toEqual({ ok: false, message: "La cantidad debe ser un entero mayor que cero." });
+    expect(parsePositiveQuantity("1.5").ok).toBe(false);
+  });
+
+  it("adjusts quick quantity controls without dropping below one", () => {
+    expect(adjustQuantityInput("2", 1)).toBe("3");
+    expect(adjustQuantityInput("2", -1)).toBe("1");
+    expect(adjustQuantityInput("1", -1)).toBe("1");
+    expect(adjustQuantityInput("", 1)).toBe("2");
   });
 
   it("normalizes optional text snapshots", () => {

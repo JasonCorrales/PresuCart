@@ -34,6 +34,17 @@ Status: in progress
 - [x] Task 8: Add Phase 2 tests and documentation for auth/purchase/manual-entry setup and verification.
   - Evidence: added tests for purchase form amount/text utilities, updated README Phase 2 usage/Supabase Auth/manual verification. `npm run test` passed 15/15 tests and `npm run build` completed successfully.
 
+### Phase 3 — Active shopping UX, edit/delete, and undo
+
+- [x] Task 9: Add quick quantity controls and faster manual-entry ergonomics for mobile shopping.
+  - Evidence: active purchase view now keeps available amount dominant and adds large `−`/`+` quantity controls plus reset-to-1 while preserving manual CRC price entry.
+- [x] Task 10: Add undo-after-add behavior for accidental item registration.
+  - Evidence: successful item inserts show a temporary prominent `DESHACER` action scoped to the inserted item id; undo deletes that persisted row and recalculates totals.
+- [x] Task 11: Add item editing for price and quantity with persisted recalculation.
+  - Evidence: each item can be edited inline for unit price and quantity, saves updates to Supabase, validates with domain helpers, and refreshes local totals.
+- [x] Task 12: Add Phase 3 tests and documentation for active-shopping correction flows.
+  - Evidence: added quantity validation/adjustment utility tests and README Phase 3 manual verification steps. `npm run test` passed 17/17 tests and `npm run build` completed successfully.
+
 ## Commit evidence
 
 - `29e8f00` — `feat: bootstrap PresuCart foundation`
