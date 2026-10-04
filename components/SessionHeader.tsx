@@ -27,7 +27,10 @@ export function SessionHeader({ user }: SessionHeaderProps) {
       </Link>
       {user ? (
         <div className="flex items-center gap-2">
-          <span className="max-w-[9rem] truncate text-xs text-slate-600">{user.email}</span>
+          <Link href="/purchases" className="rounded-full bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">
+            Historial
+          </Link>
+          <span className="max-w-[7rem] truncate text-xs text-slate-600">{user.email}</span>
           <button
             type="button"
             onClick={handleLogout}

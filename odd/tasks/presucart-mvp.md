@@ -56,9 +56,21 @@ Status: in progress
 - [x] Task 16: Add Phase 4 tests and documentation for OCR fallback and verification.
   - Evidence: added noisy OCR dedupe coverage in `tests/domain.test.ts`, documented Phase 4 camera/OCR behavior and manual verification in README. After live OCR testing, scanner candidate buttons were adjusted to show plain integer colones without thousands separators that can look like decimals. Focused OCR tests passed 5/5 and `npm run build` completed successfully.
 
+### Phase 5 — Purchase history and checkout
+
+- [x] Task 17: Add a purchase history screen with active and finalized purchase sections.
+  - Evidence: implemented authenticated `/purchases` with Supabase setup notice, user-owned purchases ordered newest first, active/finalized grouping, and mobile purchase cards with store fallback, status, budget, total, availability/over-budget signal, date, and detail link.
+- [x] Task 18: Add navigation from history to existing saved purchases and surface purchase status clearly.
+  - Evidence: added home and session-header navigation to `/purchases`; purchase cards link to `/purchases/[id]` and show the Spanish status badge.
+- [x] Task 19: Add a finalize-purchase action on the active purchase screen with persisted status and finished timestamp.
+  - Evidence: active purchase detail now has `Finalizar compra`, updates `status` to `finalizada`, sets `finished_at` to the current ISO timestamp, stores the visible total, updates local UI, and hides/guards add, edit, delete, and undo actions for read-only finalized purchases. Added `supabase/migrations/20260102000000_finalize_purchase_guards.sql` so finalized purchases cannot be updated/deleted and their items cannot be mutated at the database layer too.
+- [x] Task 20: Add Phase 5 tests and documentation for purchase history, reopening, and checkout flows.
+  - Evidence: added purchase-history domain utility coverage in `tests/domain.test.ts` and updated README usage/manual verification for history, reopening, checkout, and database-level finalized immutability. `npm run test` passed 21/21 tests and `npm run build` completed successfully.
+
 ## Commit evidence
 
 - `29e8f00` — `feat: bootstrap PresuCart foundation`
 - `f38c1fb` — `feat: add Supabase auth and manual purchase flow`
 - `0f413da` — `feat: improve active shopping corrections`
 - `0c7a9a4` — `merge: phase 3 active shopping corrections`
+- `a110b91` — `feat: add OCR price scanner`
