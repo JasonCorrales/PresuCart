@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calculateBudgetSummary, getAlertState, itemSubtotal } from "@/domain/budget";
 import { extractPriceCandidates, formatOcrCandidateAmount } from "@/domain/ocrPrice";
 import { formatCRC, formatSignedCRC, parseCRC } from "@/domain/money";
+import { normalizeOptionalProductIdentity, getProductSnapshotLabel, hasProductIdentity } from "@/domain/productIdentity";
 import { adjustQuantityInput, normalizeOptionalText, parsePositiveCRCAmount, parsePositiveQuantity } from "@/domain/purchaseInput";
 import { getPurchaseAmountSignal, getPurchaseStoreLabel, groupPurchasesByStatus } from "@/domain/purchaseHistory";
 import type { Purchase } from "@/types/database";
@@ -105,6 +106,28 @@ describe("purchase input utilities", () => {
   it("normalizes optional text snapshots", () => {
     expect(normalizeOptionalText("  Palí  ")).toBe("Palí");
     expect(normalizeOptionalText("   ")).toBeNull();
+  });
+});
+
+describe("product identity utilities", () => {
+  it("keeps product identity optional for quick add", () => {
+    const identity = normalizeOptionalProductIdentity("   ", "   ");
+
+    expect(identity).toEqual({ name: null, barcode: null });
+    expect(hasProductIdentity(identity)).toBe(false);
+    expect(getProductSnapshotLabel(identity)).toBeNull();
+  });
+
+  it("normalizes optional product name and barcode without using barcode as price", () => {
+    const identity = normalizeOptionalProductIdentity("  Leche   Dos Pinos  ", " 7 441001 234567 ");
+
+    expect(identity).toEqual({ name: "Leche Dos Pinos", barcode: "7441001234567" });
+    expect(hasProductIdentity(identity)).toBe(true);
+    expect(getProductSnapshotLabel(identity)).toBe("Leche Dos Pinos");
+  });
+
+  it("derives barcode fallback labels for item snapshots", () => {
+    expect(getProductSnapshotLabel(normalizeOptionalProductIdentity("", " ABC-123 "))).toBe("Código ABC-123");
   });
 });
 
