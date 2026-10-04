@@ -78,6 +78,17 @@ Status: in progress
 - [x] Task 24: Add Phase 6 tests and documentation for product/barcode identification flows.
   - Evidence: added `domain/productIdentity.ts` with Vitest coverage for optional identity normalization and snapshot labels; updated README Phase 6 usage and manual verification. `npm run test` passed 24/24 tests and `npm run build` completed successfully.
 
+### Phase 7 — Camera barcode scanning
+
+- [x] Task 25: Add an in-screen barcode scanner for optional product identification.
+  - Evidence: added `BarcodeScanner` inside the optional product identity fieldset on `/purchases/[id]`, using browser-native `BarcodeDetector` plus live camera preview/scan loop without storing frames.
+- [x] Task 26: Fill the existing barcode/manual code field from scanner results without changing price.
+  - Evidence: successful detection normalizes the raw barcode, fills only the existing barcode/manual code state, shows confirmation copy, and stops camera tracks; price and quantity state are untouched.
+- [x] Task 27: Keep manual fallback and graceful unsupported/permission handling.
+  - Evidence: unsupported `BarcodeDetector`, unsupported commercial formats, missing/denied camera, and no-clear-code states show Spanish fallback copy while the manual field remains visible and usable; close/unmount/success stops tracks.
+- [x] Task 28: Add Phase 7 tests and documentation for barcode scanning behavior.
+  - Evidence: added deterministic barcode scanner utility tests for result normalization and supported format labels, updated README Phase 7 usage/manual verification. `npm run test` passed 26/26 tests and `npm run build` completed successfully.
+
 ## Commit evidence
 
 - `29e8f00` — `feat: bootstrap PresuCart foundation`
@@ -86,3 +97,4 @@ Status: in progress
 - `0c7a9a4` — `merge: phase 3 active shopping corrections`
 - `a110b91` — `feat: add OCR price scanner`
 - `c1b32d0` — `feat: add purchase history checkout`
+- `0c0cb3b` — `feat: add optional product identification`

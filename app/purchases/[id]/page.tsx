@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
+import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { OcrPriceScanner } from "@/components/OcrPriceScanner";
 import { SessionHeader } from "@/components/SessionHeader";
 import { SetupNotice } from "@/components/SetupNotice";
@@ -125,6 +126,12 @@ export default function PurchasePage() {
     if (purchase?.status !== "activa") return;
     setUnitPriceInput(String(amount));
     setMessage("Precio detectado listo. Revisa la cantidad y presiona agregar al carrito.");
+  }
+
+  function handleBarcodeDetected(barcode: string) {
+    if (purchase?.status !== "activa") return;
+    setBarcodeInput(barcode);
+    setMessage("Código detectado listo. Solo identifica el producto; revisa el precio y la cantidad antes de agregar.");
   }
 
   async function resolveProductForItem(identity: ReturnType<typeof normalizeOptionalProductIdentity>) {
@@ -473,6 +480,7 @@ export default function PurchasePage() {
                       placeholder="Escaneado o escrito"
                     />
                   </label>
+                  <BarcodeScanner onDetect={handleBarcodeDetected} />
                 </div>
               </fieldset>
               <QuantityField
