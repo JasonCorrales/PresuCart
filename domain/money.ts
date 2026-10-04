@@ -2,11 +2,19 @@ export const CRC_CURRENCY = "CRC";
 
 export function formatCRC(amount: number): string {
   assertIntegerMoney(amount, "amount");
+  return formatSignedCRC(amount);
+}
+
+export function formatSignedCRC(amount: number): string {
+  if (!Number.isSafeInteger(amount)) {
+    throw new Error("amount debe ser un entero en colones");
+  }
+
   const formattedNumber = new Intl.NumberFormat("de-DE", {
     maximumFractionDigits: 0,
     minimumFractionDigits: 0,
-  }).format(amount);
-  return `₡${formattedNumber}`;
+  }).format(Math.abs(amount));
+  return amount < 0 ? `-₡${formattedNumber}` : `₡${formattedNumber}`;
 }
 
 export function parseCRC(input: string): number | null {

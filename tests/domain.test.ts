@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { calculateBudgetSummary, getAlertState, itemSubtotal } from "@/domain/budget";
 import { extractPriceCandidates } from "@/domain/ocrPrice";
-import { formatCRC, parseCRC } from "@/domain/money";
+import { formatCRC, formatSignedCRC, parseCRC } from "@/domain/money";
+import { normalizeOptionalText, parsePositiveCRCAmount } from "@/domain/purchaseInput";
 
 describe("money utilities", () => {
   it("formats and parses CRC integer amounts", () => {
@@ -11,7 +12,8 @@ describe("money utilities", () => {
     expect(parseCRC("1250")).toBe(1250);
   });
 
-  it("rejects invalid money values", () => {
+  it("formats signed display amounts and rejects invalid money values", () => {
+    expect(formatSignedCRC(-10000)).toBe("-₡10.000");
     expect(parseCRC("abc")).toBeNull();
     expect(parseCRC("12.50")).toBeNull();
     expect(() => formatCRC(-1)).toThrow();
@@ -71,6 +73,23 @@ describe("budget calculations", () => {
     expect(() => calculateBudgetSummary(0, [])).toThrow();
     expect(() => itemSubtotal({ unitPrice: 1000.5, quantity: 1 })).toThrow();
     expect(() => itemSubtotal({ unitPrice: 1000, quantity: 0 })).toThrow();
+  });
+});
+
+describe("purchase input utilities", () => {
+  it("accepts positive CRC amounts for form submissions", () => {
+    expect(parsePositiveCRCAmount("₡75.000", "El presupuesto")).toEqual({ ok: true, amount: 75000 });
+  });
+
+  it("rejects zero, blank and decimal form amounts", () => {
+    expect(parsePositiveCRCAmount("0", "El precio")).toEqual({ ok: false, message: "El precio debe ser mayor que cero." });
+    expect(parsePositiveCRCAmount("", "El precio").ok).toBe(false);
+    expect(parsePositiveCRCAmount("12.50", "El precio").ok).toBe(false);
+  });
+
+  it("normalizes optional text snapshots", () => {
+    expect(normalizeOptionalText("  Palí  ")).toBe("Palí");
+    expect(normalizeOptionalText("   ")).toBeNull();
   });
 });
 

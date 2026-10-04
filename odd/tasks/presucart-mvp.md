@@ -12,6 +12,8 @@ Status: in progress
 
 ## Tasks
 
+### Phase 1 — Foundation
+
 - [x] Task 1: Bootstrap the project base with Next.js, TypeScript, Tailwind, lint/test tooling, and Supabase dependencies.
   - Evidence: implemented project files for Next.js app, Tailwind, ESLint, Vitest, Supabase dependency, PWA manifest/icon, and Spanish landing page. `npm install`, `npm run test`, and `npm run build` completed after upgrading Next to 16.3.8. `npm audit --audit-level=moderate --omit=dev` reports 0 production vulnerabilities.
 - [x] Task 2: Define the initial domain model and Supabase schema for User/Profile, Store, Product, Purchase, and PurchaseItem.
@@ -21,6 +23,18 @@ Status: in progress
 - [x] Task 4: Document setup, environment variables, and Phase 1 verification steps.
   - Evidence: implemented `README.md` setup, env vars, Supabase schema application, and verification commands. `.env.example` could not be created because the harness blocks env-like files as sensitive paths; README includes the required variable names.
 
+### Phase 2 — Login, purchase creation, and manual item entry
+
+- [x] Task 5: Implement Supabase authentication screens and session-aware navigation.
+  - Evidence: implemented `/auth` sign in/sign up UI, session-aware header/logout, Spanish missing-Supabase configuration notice, and landing navigation to auth/new purchase.
+- [x] Task 6: Implement authenticated purchase creation with budget and optional store name.
+  - Evidence: implemented `/purchases/new` with authenticated user lookup, positive CRC budget validation, optional store name snapshot, Supabase insert with `owner_id`, and redirect to active purchase.
+- [x] Task 7: Implement active purchase view with manual price entry, quantity, live totals, and persisted purchase items.
+  - Evidence: implemented `/purchases/[id]` with owner-scoped purchase fetch, persisted manual item insertion, client-side budget/spent/available/percent/alert recalculation, progress bar, and item deletion.
+- [x] Task 8: Add Phase 2 tests and documentation for auth/purchase/manual-entry setup and verification.
+  - Evidence: added tests for purchase form amount/text utilities, updated README Phase 2 usage/Supabase Auth/manual verification. `npm run test` passed 15/15 tests and `npm run build` completed successfully.
+
 ## Commit evidence
 
-- No commits yet. User has not explicitly authorized commits.
+- `29e8f00` — `feat: bootstrap PresuCart foundation`
+- `f38c1fb` — `feat: add Supabase auth and manual purchase flow`
