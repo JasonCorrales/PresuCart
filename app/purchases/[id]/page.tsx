@@ -561,7 +561,7 @@ export default function PurchasePage() {
       : null;
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-md px-5 py-6">
+    <main className="mx-auto min-h-screen w-full max-w-md overflow-x-hidden px-3 py-3 sm:px-5 sm:py-6">
       <SessionHeader user={user} />
       {!supabase ? (
         <SetupNotice />
@@ -574,39 +574,46 @@ export default function PurchasePage() {
           {message ? <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-900">{message}</p> : null}
         </section>
       ) : (
-        <div className="space-y-5">
-          <section className="rounded-[2rem] bg-presucart-tinta p-5 text-white shadow-xl">
-            <p className="text-sm font-bold uppercase tracking-[0.2em] text-emerald-200">Compra {purchase.status}</p>
-            <h1 className="mt-2 text-3xl font-black">{purchase.store_name_snapshot ?? "Supermercado sin nombre"}</h1>
-            <div className="mt-5 rounded-[1.5rem] bg-white p-4 text-presucart-tinta">
-              <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-700">Disponible</p>
-              <p className="mt-1 text-4xl font-black leading-none">{formatSignedCRC(summary.available)}</p>
+        <div className="space-y-3 sm:space-y-5">
+          <section className="rounded-[1.5rem] bg-presucart-tinta p-3 text-white shadow-xl sm:rounded-[2rem] sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200 sm:text-sm sm:tracking-[0.2em]">Compra {purchase.status}</p>
+                <h1 className="mt-1 break-words text-2xl font-black leading-tight sm:mt-2 sm:text-3xl">{purchase.store_name_snapshot ?? "Supermercado sin nombre"}</h1>
+              </div>
+              {isActive ? (
+                <button
+                  type="button"
+                  onClick={handleFinalizePurchase}
+                  disabled={isFinalizing}
+                  className="min-h-11 shrink-0 rounded-2xl bg-emerald-500 px-3 py-2 text-sm font-black leading-tight text-white disabled:bg-slate-300 sm:min-h-14 sm:px-5 sm:py-4 sm:text-lg"
+                >
+                  {isFinalizing ? "Finalizando..." : "Finalizar compra"}
+                </button>
+              ) : null}
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="mt-3 rounded-[1.25rem] bg-white p-3 text-presucart-tinta sm:mt-5 sm:rounded-[1.5rem] sm:p-4">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700 sm:tracking-[0.25em]">Disponible</p>
+              <p className="mt-1 break-words text-3xl font-black leading-none sm:text-4xl">{formatSignedCRC(summary.available)}</p>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:gap-3">
               <Metric label="Presupuesto" value={formatCRC(summary.budget)} />
               <Metric label="Gastado" value={formatCRC(summary.spent)} />
-              <Metric label="Usado" value={`${Math.round(summary.usedPercent)}%`} />
             </div>
-            <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20">
+            <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/20 sm:mt-5 sm:h-4">
               <div className="h-full rounded-full bg-emerald-300" style={{ width: progressWidth }} />
             </div>
-            <p className={`mt-4 rounded-2xl px-4 py-3 text-sm font-black ${currentAlert.className}`}>{currentAlert.label}</p>
-            {isActive ? (
-              <button
-                type="button"
-                onClick={handleFinalizePurchase}
-                disabled={isFinalizing}
-                className="mt-4 min-h-14 w-full rounded-2xl bg-emerald-500 px-5 py-4 text-lg font-black text-white disabled:bg-slate-300"
-              >
-                {isFinalizing ? "Finalizando..." : "Finalizar compra"}
-              </button>
-            ) : (
-              <p className="mt-4 rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-emerald-50">
+            <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4">
+              <p className={`min-h-11 flex-1 rounded-2xl px-3 py-3 text-sm font-black ${currentAlert.className}`}>{currentAlert.label}</p>
+              <p className="min-h-11 rounded-2xl bg-white/10 px-3 py-3 text-sm font-black text-emerald-50">{Math.round(summary.usedPercent)}% usado</p>
+            </div>
+            {!isActive ? (
+              <p className="mt-3 rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-emerald-50 sm:mt-4">
                 {isFinalized
                   ? "Esta compra ya fue finalizada y queda solo lectura. No puedes agregar, editar, borrar ni deshacer ítems."
                   : "Esta compra no está activa y queda solo lectura."}
               </p>
-            )}
+            ) : null}
           </section>
 
           {message ? <p className="rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-900">{message}</p> : null}
@@ -625,10 +632,9 @@ export default function PurchasePage() {
           ) : null}
 
           {isActive ? (
-            <section className="rounded-[2rem] bg-white p-5 shadow-xl">
-              <h2 className="text-2xl font-black text-presucart-tinta">Agregar precio</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Flujo rápido: escribe precio, ajusta cantidad con botones grandes y sigue caminando.</p>
-              <div className="mt-5">
+            <section className="rounded-[1.5rem] bg-white p-3 shadow-xl sm:rounded-[2rem] sm:p-5" aria-labelledby="quick-add-heading">
+              <h2 id="quick-add-heading" className="sr-only">Formulario rápido de compra</h2>
+              <div>
                 <PurchaseToolSettings
                   enablePriceScanner={enablePriceScanner}
                   enableProductIdentity={enableProductIdentity}
@@ -636,7 +642,7 @@ export default function PurchasePage() {
                   onEnableProductIdentityChange={setEnableProductIdentity}
                 />
               </div>
-              <form className="mt-5 space-y-4" onSubmit={handleAddItem}>
+              <form className="mt-3 space-y-3 sm:mt-5 sm:space-y-4" onSubmit={handleAddItem}>
                 <label className="block font-bold text-presucart-tinta">
                   Precio unitario CRC
                   <input
@@ -644,7 +650,7 @@ export default function PurchasePage() {
                     value={unitPriceInput}
                     onChange={(event) => setUnitPriceInput(event.target.value)}
                     required
-                    className="mt-2 min-h-16 w-full rounded-2xl border border-slate-200 px-4 text-2xl font-black"
+                    className="mt-1 min-h-14 w-full rounded-2xl border border-slate-200 px-4 text-xl font-black sm:mt-2 sm:min-h-16 sm:text-2xl"
                     placeholder="₡2.500"
                   />
                 </label>
@@ -658,7 +664,7 @@ export default function PurchasePage() {
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="min-h-14 w-full rounded-2xl bg-emerald-600 px-5 py-4 text-lg font-black text-white disabled:bg-slate-300"
+                  className="min-h-12 w-full rounded-2xl bg-emerald-600 px-5 py-3 text-lg font-black text-white disabled:bg-slate-300 sm:min-h-14 sm:py-4"
                 >
                   {isSaving ? "Agregando..." : "Agregar al carrito"}
                 </button>
@@ -762,23 +768,23 @@ export default function PurchasePage() {
                       </div>
                     ) : (
                       <div className="flex items-center justify-between gap-3">
-                        <div>
-                          {item.product_name_snapshot ? <p className="text-sm font-bold text-slate-600">{item.product_name_snapshot}</p> : null}
-                          <p className="font-black text-presucart-tinta">
+                        <div className="min-w-0">
+                          {item.product_name_snapshot ? <p className="break-words text-sm font-bold text-slate-600">{item.product_name_snapshot}</p> : null}
+                          <p className="break-words font-black text-presucart-tinta">
                             {formatCRC(item.unit_price_amount)} × {item.quantity}
                           </p>
-                          <p className="text-sm text-slate-600">Subtotal {formatCRC(itemSubtotal({ unitPrice: item.unit_price_amount, quantity: item.quantity }))}</p>
+                          <p className="break-words text-sm text-slate-600">Subtotal {formatCRC(itemSubtotal({ unitPrice: item.unit_price_amount, quantity: item.quantity }))}</p>
                         </div>
                         {isActive ? (
-                          <div className="flex flex-col gap-2">
-                            <button type="button" onClick={() => startEditing(item)} className="rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-presucart-tinta">
+                          <div className="flex shrink-0 flex-col gap-2">
+                            <button type="button" onClick={() => startEditing(item)} className="min-h-11 rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-presucart-tinta">
                               Editar
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteItem(item.id)}
                               disabled={isDeletingItemId === item.id}
-                              className="rounded-full bg-red-50 px-4 py-2 text-sm font-bold text-red-700 disabled:bg-slate-100 disabled:text-slate-400"
+                              className="min-h-11 rounded-full bg-red-50 px-4 py-2 text-sm font-bold text-red-700 disabled:bg-slate-100 disabled:text-slate-400"
                             >
                               {isDeletingItemId === item.id ? "Borrando..." : "Borrar"}
                             </button>
@@ -799,9 +805,9 @@ export default function PurchasePage() {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-white/10 p-3">
+    <div className="min-w-0 rounded-2xl bg-white/10 p-2 sm:p-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-emerald-100">{label}</p>
-      <p className="mt-1 text-lg font-black">{value}</p>
+      <p className="mt-1 break-words text-base font-black leading-tight sm:text-lg">{value}</p>
     </div>
   );
 }
@@ -824,13 +830,13 @@ function QuantityField({
       <div className="flex items-center justify-between">
         <span>Cantidad</span>
         {onReset ? (
-          <button type="button" onClick={onReset} className="rounded-full bg-slate-100 px-4 py-2 text-sm font-black text-slate-700">
+          <button type="button" onClick={onReset} className="min-h-11 rounded-full bg-slate-100 px-4 py-2 text-sm font-black text-slate-700">
             Reiniciar a 1
           </button>
         ) : null}
       </div>
-      <div className="mt-2 grid grid-cols-[4rem_1fr_4rem] gap-2">
-        <button type="button" onClick={onDecrement} className="min-h-14 rounded-2xl bg-slate-100 text-3xl font-black text-presucart-tinta" aria-label="Bajar cantidad">
+      <div className="mt-1 grid grid-cols-[3.5rem_1fr_3.5rem] gap-2 sm:mt-2 sm:grid-cols-[4rem_1fr_4rem]">
+        <button type="button" onClick={onDecrement} className="min-h-12 rounded-2xl bg-slate-100 text-3xl font-black text-presucart-tinta sm:min-h-14" aria-label="Bajar cantidad">
           −
         </button>
         <input
@@ -838,9 +844,9 @@ function QuantityField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           required
-          className="min-h-14 w-full rounded-2xl border border-slate-200 px-4 text-center text-2xl font-black"
+          className="min-h-12 w-full rounded-2xl border border-slate-200 px-4 text-center text-2xl font-black sm:min-h-14"
         />
-        <button type="button" onClick={onIncrement} className="min-h-14 rounded-2xl bg-slate-100 text-3xl font-black text-presucart-tinta" aria-label="Subir cantidad">
+        <button type="button" onClick={onIncrement} className="min-h-12 rounded-2xl bg-slate-100 text-3xl font-black text-presucart-tinta sm:min-h-14" aria-label="Subir cantidad">
           +
         </button>
       </div>

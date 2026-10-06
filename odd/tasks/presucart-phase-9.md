@@ -23,6 +23,14 @@ Validate the MVP without adding product features. Current offline support is lim
 - [ ] 4. Validate real mobile camera/PWA/shopping flows and Supabase authorization/finalized guards in a safe test environment.
   - Status: real mobile/browser/Supabase checks pending. Public GET checks at https://presu-cart.vercel.app/ passed for HTTPS, root, auth, manifest, SW, and icon; deployed SW matched local. This does not establish installability, authenticated behavior, or deployment of Phase 9 fixes.
 
+## Mobile UX follow-up
+
+- [x] 5. Compact the active purchase summary and quick-add area to reduce scrolling on phones.
+  - Status: completed for code and mocked regression coverage; real 320px mobile/browser viewport verification remains pending because jsdom cannot prove actual geometry, scroll length, keyboard behavior, or rendered overflow.
+  - User requested removal of the visible `Agregar precio` heading and explanatory text, plus smaller budget/spent/finalize summary. Preserve visible labels, dominant availability, accessible touch targets, calculations, actions, and default-hidden optional tools. No sticky overlay or persistence changes.
+  - Route: delegated page/test changes; test-first rendered regression for removed copy, preserved totals/actions/order, and default-hidden optional panels; structural Tailwind spacing changes only. No commit/push authorized for this follow-up.
+  - Checks: RED `npm run test -- tests/purchaseMobileLayout.test.tsx` failed on the visible `Agregar precio` heading before the UI change. GREEN `npm run test -- tests/purchaseMobileLayout.test.tsx tests/purchasePage.test.tsx` passed after the compact layout changes. Full follow-up verification commands passed: `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build`.
+
 ## Acceptance and evidence
 
 Commands must be reported as observed, not inferred. Use test-first for behavior fixes where meaningful; configuration and passive documentation use ordinary command/structural verification. Each unit receives independent verification according to native assessment (unavailable assessment is high risk). Record manual checks as pending until performed.
