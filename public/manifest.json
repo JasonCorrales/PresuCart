@@ -3,6 +3,7 @@
   "short_name": "PresuCart",
   "description": "Control móvil de presupuesto para compras de supermercado.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#f7fbf8",
   "theme_color": "#16a34a",

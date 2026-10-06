@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { SessionHeader } from "@/components/SessionHeader";
 import { SetupNotice } from "@/components/SetupNotice";
+import { normalizeSupabaseErrorMessage } from "@/domain/offline";
 import { parsePositiveCRCAmount, normalizeOptionalText } from "@/domain/purchaseInput";
 import { createBrowserSupabaseClient } from "@/services/supabase";
 
@@ -51,7 +52,7 @@ export default function NewPurchasePage() {
     setIsSubmitting(false);
 
     if (error) {
-      setMessage(error.message);
+      setMessage(normalizeSupabaseErrorMessage(error, navigator.onLine));
       return;
     }
 

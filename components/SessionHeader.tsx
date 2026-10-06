@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
+import { clearPresuCartDraftNamespace } from "@/domain/activePurchaseDraft";
 import { createBrowserSupabaseClient } from "@/services/supabase";
 
 type SessionHeaderProps = {
@@ -15,6 +16,13 @@ export function SessionHeader({ user }: SessionHeaderProps) {
   async function handleLogout() {
     const supabase = createBrowserSupabaseClient();
     if (!supabase) return;
+    if (typeof window !== "undefined") {
+      try {
+        clearPresuCartDraftNamespace(window.localStorage);
+      } catch {
+        // Blocked localStorage should not prevent sign out.
+      }
+    }
     await supabase.auth.signOut();
     router.push("/auth");
     router.refresh();

@@ -89,6 +89,37 @@ Status: in progress
 - [x] Task 28: Add Phase 7 tests and documentation for barcode scanning behavior.
   - Evidence: added deterministic barcode scanner utility tests for result normalization and supported format labels, updated README Phase 7 usage/manual verification. `npm run test` passed 26/26 tests and `npm run build` completed successfully.
 
+### Phase 8 — PWA/offline and mobile UX resilience
+
+Route: delegated implementation is required because Phase 8 touches multiple non-trivial files across app shell, components, domain utilities, tests, and documentation.
+Checks: use test-first where deterministic domain/browser-helper tests apply; run `npm run test` and `npm run build` before closing the phase.
+Delivery: user authorized commit and push. Implementation committed as `86ca763` (`feat: add offline resilience and compact shopping controls`) on `feature/presucart-phase-8`. Manual browser validation remains pending. The accumulated change exceeds the 400-line review heuristic; no PR has been created.
+Assessment: native assessment was unassessable due to undeclared untracked paths; followed the high-risk fallback with independent verification. Tests/build passed independently (33/33). Final service-worker activation syntax and mocked runtime checks passed: only old PresuCart shell caches are deleted; unrelated caches are preserved.
+
+- [x] Task 29: Add a static PWA service worker and safe registration for install/offline shell resilience.
+  - Evidence: added `public/sw.js`, manifest scope, and client-only registration from the app shell; independent-verification fix narrowed caching to explicit public shell assets (`/`, `/manifest.json`, `/icons/presucart.svg`) and public-home navigation fallback while avoiding dynamic same-origin purchases, RSC/API/authenticated routes, external origins, and all mutations.
+- [x] Task 30: Add network/offline status UX with clear Spanish recovery copy.
+  - Evidence: added global `PwaLifecycle` status banner with Spanish offline/reconnected guidance that does not block shopping flows.
+- [x] Task 31: Preserve active-purchase draft inputs locally during reload/offline interruptions.
+  - Evidence: active purchase add-form fields are saved per authenticated user id and purchase id in `localStorage`, blocked storage is treated as a recoverable no-op, drafts are restored with Spanish recovery copy, and the purchase draft clears after successful item add/finalization. Logout clears only the `presucart:active-purchase-draft:*` namespace.
+- [x] Task 32: Normalize Supabase/network error messages into actionable mobile UX copy.
+  - Evidence: added reusable `domain/offline.ts` normalization for offline/network/auth/permission/generic failures and used it on auth, history, new purchase, and active purchase flows.
+- [x] Task 33: Add Phase 8 tests and documentation for PWA/offline/mobile recovery behavior.
+  - Evidence: added deterministic helper tests for service-worker allowlist/dynamic-route denial, user-scoped draft keys, namespace-only draft clearing, blocked storage safety, network/error copy, and draft normalization; updated README Phase 8 usage/manual verification with public-home offline fallback and authenticated offline limitations. Independent verification fix also changed item deletion to defer UI removal until Supabase delete succeeds, preserving total-sync behavior. RED evidence for this fix is limited: issues came from external independent verification after the initial Phase 8 GREEN rather than a newly captured pre-fix local failing run. GREEN: `npm run test` passed 33/33 tests and `npm run build` completed successfully. Manual browser checks are still pending.
+
+- [ ] Task 34: Validate Phase 8 in a real production browser with live Supabase.
+  - Pending: installation, offline/reconnect banner, public-home fallback, draft restoration after reconnect, logout cleanup, and failed delete behavior. No browser validation was available in this session.
+
+### Phase 8 follow-up — Optional panels on demand
+
+- [x] Task 35: Collapse product identification and local price scanner by default with accessible independent toggles; unmount scanners on collapse while preserving form inputs.
+  - Evidence: added reusable `OptionalPanel` with `type="button"`, `aria-expanded`, and `aria-controls`; active purchase price and quantity remain visible while `Escáner local de precio` and `Identificar producto (opcional)` mount only when independently opened, so closing unmounts scanner children and preserves parent-held form state. Added React Testing Library jsdom coverage for default-collapsed panels, independent opening, unmount on collapse, and no accidental parent form submit. RED: `npm run test` failed before implementation because `@/components/OptionalPanel` did not exist. GREEN/verification: `npm run test` passed 35/35 tests and `npm run build` completed successfully. No commit authorized.
+
+### Phase 8 follow-up — Compact add flow and top configuration
+
+- [x] Task 36: Hide optional sections completely by default; add top settings to independently enable them and put submit immediately after price/quantity.
+  - Evidence: active purchase now uses a top closed-by-default `PurchaseToolSettings` panel with independent labelled checkboxes for the OCR price scanner and product identification, both disabled by default with no persisted enable preference. Enabling a checkbox mounts its section content immediately without a second expansion click; hiding unmounts scanner children while parent-held draft values remain intact, and finalized purchases still render read-only with no add/settings tools. The `Agregar al carrito` submit now sits immediately after price and quantity before undo and optional sections. RED: `npm run test` failed before implementation because `@/components/PurchaseToolSettings` did not exist and submit still followed optional panels. GREEN/verification: `npm run test` passed 39/39 tests and `npm run build` completed successfully. Manual browser checks are still pending.
+
 ## Commit evidence
 
 - `29e8f00` — `feat: bootstrap PresuCart foundation`

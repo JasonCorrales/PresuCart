@@ -7,6 +7,7 @@ import type { User } from "@supabase/supabase-js";
 import { SessionHeader } from "@/components/SessionHeader";
 import { SetupNotice } from "@/components/SetupNotice";
 import { formatCRC, formatSignedCRC } from "@/domain/money";
+import { normalizeSupabaseErrorMessage } from "@/domain/offline";
 import { getPurchaseAmountSignal, getPurchaseDisplayDate, getPurchaseStoreLabel, groupPurchasesByStatus } from "@/domain/purchaseHistory";
 import { createBrowserSupabaseClient } from "@/services/supabase";
 import type { Purchase } from "@/types/database";
@@ -42,7 +43,7 @@ export default function PurchasesPage() {
         .order("started_at", { ascending: false });
 
       if (error) {
-        setMessage(error.message);
+        setMessage(normalizeSupabaseErrorMessage(error, navigator.onLine));
       } else {
         setPurchases((data ?? []) as Purchase[]);
       }

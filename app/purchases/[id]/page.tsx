@@ -5,10 +5,18 @@ import { useParams, useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { OcrPriceScanner } from "@/components/OcrPriceScanner";
+import { PurchaseToolSettings } from "@/components/PurchaseToolSettings";
 import { SessionHeader } from "@/components/SessionHeader";
 import { SetupNotice } from "@/components/SetupNotice";
+import {
+  readActivePurchaseDraft,
+  removeActivePurchaseDraft,
+  writeActivePurchaseDraft,
+  normalizeActivePurchaseDraft,
+} from "@/domain/activePurchaseDraft";
 import { calculateBudgetSummary, itemSubtotal } from "@/domain/budget";
 import { formatCRC, formatSignedCRC } from "@/domain/money";
+import { normalizeSupabaseErrorMessage } from "@/domain/offline";
 import { getProductSnapshotLabel, hasProductIdentity, normalizeOptionalProductIdentity } from "@/domain/productIdentity";
 import { adjustQuantityInput, parsePositiveCRCAmount, parsePositiveQuantity } from "@/domain/purchaseInput";
 import { createBrowserSupabaseClient } from "@/services/supabase";
@@ -53,7 +61,11 @@ export default function PurchasePage() {
   const [editUnitPriceInput, setEditUnitPriceInput] = useState("");
   const [editQuantityInput, setEditQuantityInput] = useState("1");
   const [isUpdatingItemId, setIsUpdatingItemId] = useState<string | null>(null);
+  const [isDeletingItemId, setIsDeletingItemId] = useState<string | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [isDraftRestored, setIsDraftRestored] = useState(false);
+  const [enablePriceScanner, setEnablePriceScanner] = useState(false);
+  const [enableProductIdentity, setEnableProductIdentity] = useState(false);
 
   useEffect(() => {
     if (!supabase) {
@@ -77,7 +89,7 @@ export default function PurchasePage() {
       ]);
 
       if (purchaseError || itemError) {
-        setMessage(purchaseError?.message ?? itemError?.message ?? "No se pudo cargar la compra.");
+        setMessage(normalizeSupabaseErrorMessage(purchaseError ?? itemError, navigator.onLine));
       } else {
         setPurchase(purchaseData as Purchase);
         setItems((itemData ?? []) as PurchaseItem[]);
@@ -87,6 +99,41 @@ export default function PurchasePage() {
 
     loadPurchase();
   }, [params.id, router, supabase]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !user) return;
+
+    let storage: Storage;
+    try {
+      storage = window.localStorage;
+    } catch {
+      setIsDraftRestored(true);
+      return;
+    }
+
+    const draft = readActivePurchaseDraft(storage, user.id, params.id);
+    if (draft) {
+      setUnitPriceInput(draft.unitPriceInput);
+      setQuantityInput(draft.quantityInput);
+      setProductNameInput(draft.productNameInput);
+      setBarcodeInput(draft.barcodeInput);
+      if (draft.unitPriceInput || draft.quantityInput !== "1" || draft.productNameInput || draft.barcodeInput) {
+        setMessage("Recuperamos lo que habías escrito antes de la interrupción. Revisa y guarda cuando tengas conexión.");
+      }
+    }
+    setIsDraftRestored(true);
+  }, [params.id, user]);
+
+  useEffect(() => {
+    if (!isDraftRestored || purchase?.status !== "activa" || !user || typeof window === "undefined") return;
+
+    try {
+      const draft = normalizeActivePurchaseDraft({ unitPriceInput, quantityInput, productNameInput, barcodeInput });
+      writeActivePurchaseDraft(window.localStorage, user.id, purchase.id, draft);
+    } catch {
+      // Blocked localStorage should not break active shopping.
+    }
+  }, [barcodeInput, isDraftRestored, productNameInput, purchase, quantityInput, unitPriceInput, user]);
 
   useEffect(() => {
     if (!undoAdd) return;
@@ -120,6 +167,15 @@ export default function PurchasePage() {
   function resetQuickQuantity() {
     if (purchase?.status !== "activa") return;
     setQuantityInput("1");
+  }
+
+  function clearActiveDraft(purchaseId: string) {
+    if (typeof window === "undefined" || !user) return;
+    try {
+      removeActivePurchaseDraft(window.localStorage, user.id, purchaseId);
+    } catch {
+      // Blocked localStorage should not break persisted Supabase actions.
+    }
   }
 
   function handleOcrCandidate(amount: number) {
@@ -225,7 +281,7 @@ export default function PurchasePage() {
       productFields = await resolveProductForItem(productIdentity);
     } catch (error) {
       setIsSaving(false);
-      setMessage(error instanceof Error ? error.message : "No se pudo guardar el producto.");
+      setMessage(normalizeSupabaseErrorMessage(error, navigator.onLine));
       return;
     }
 
@@ -243,7 +299,7 @@ export default function PurchasePage() {
     setIsSaving(false);
 
     if (error) {
-      setMessage(error.message);
+      setMessage(normalizeSupabaseErrorMessage(error, navigator.onLine));
       return;
     }
 
@@ -260,6 +316,7 @@ export default function PurchasePage() {
     setQuantityInput("1");
     setProductNameInput("");
     setBarcodeInput("");
+    clearActiveDraft(purchase.id);
     await syncStoredTotal(nextItems);
   }
 
@@ -267,7 +324,7 @@ export default function PurchasePage() {
     if (!supabase || !purchase) return false;
     const { error } = await supabase.from("purchase_items").delete().eq("id", itemId).eq("purchase_id", purchase.id);
     if (error) {
-      setMessage(error.message);
+      setMessage(normalizeSupabaseErrorMessage(error, navigator.onLine));
       return false;
     }
     await syncStoredTotal(nextItems);
@@ -295,12 +352,17 @@ export default function PurchasePage() {
   }
 
   async function handleDeleteItem(itemId: string) {
-    if (purchase?.status !== "activa") return;
+    if (purchase?.status !== "activa" || isDeletingItemId) return;
     const nextItems = items.filter((item) => item.id !== itemId);
+    setIsDeletingItemId(itemId);
+    setMessage(null);
+    const deleted = await deletePersistedItem(itemId, nextItems);
+    setIsDeletingItemId(null);
+    if (!deleted) return;
+
     setItems(nextItems);
     if (undoAdd?.itemId === itemId) setUndoAdd(null);
     if (editingItemId === itemId) cancelEditing();
-    await deletePersistedItem(itemId, nextItems);
   }
 
   function startEditing(item: PurchaseItem) {
@@ -344,7 +406,7 @@ export default function PurchasePage() {
     setIsUpdatingItemId(null);
 
     if (error) {
-      setMessage(error.message);
+      setMessage(normalizeSupabaseErrorMessage(error, navigator.onLine));
       return;
     }
 
@@ -372,10 +434,11 @@ export default function PurchasePage() {
     setIsFinalizing(false);
 
     if (error) {
-      setMessage(error.message);
+      setMessage(normalizeSupabaseErrorMessage(error, navigator.onLine));
       return;
     }
 
+    clearActiveDraft(purchase.id);
     setPurchase(data as Purchase);
     setUndoAdd(null);
     cancelEditing();
@@ -440,77 +503,97 @@ export default function PurchasePage() {
 
           {isActive ? (
             <section className="rounded-[2rem] bg-white p-5 shadow-xl">
-            <h2 className="text-2xl font-black text-presucart-tinta">Agregar precio</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Flujo rápido: escribe precio, ajusta cantidad con botones grandes y sigue caminando.</p>
-            <form className="mt-5 space-y-4" onSubmit={handleAddItem}>
-              <label className="block font-bold text-presucart-tinta">
-                Precio unitario CRC
-                <input
-                  inputMode="numeric"
-                  value={unitPriceInput}
-                  onChange={(event) => setUnitPriceInput(event.target.value)}
-                  required
-                  className="mt-2 min-h-16 w-full rounded-2xl border border-slate-200 px-4 text-2xl font-black"
-                  placeholder="₡2.500"
+              <h2 className="text-2xl font-black text-presucart-tinta">Agregar precio</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Flujo rápido: escribe precio, ajusta cantidad con botones grandes y sigue caminando.</p>
+              <div className="mt-5">
+                <PurchaseToolSettings
+                  enablePriceScanner={enablePriceScanner}
+                  enableProductIdentity={enableProductIdentity}
+                  onEnablePriceScannerChange={setEnablePriceScanner}
+                  onEnableProductIdentityChange={setEnableProductIdentity}
                 />
-              </label>
-              <OcrPriceScanner onSelectCandidate={handleOcrCandidate} />
-              <fieldset className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4">
-                <legend className="px-1 text-sm font-black text-presucart-tinta">Identificar producto (opcional)</legend>
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Si tenés tiempo, agregá nombre o código para reconocerlo después. El código no cambia el precio.
-                </p>
-                <div className="mt-3 space-y-3">
-                  <label className="block text-sm font-bold text-presucart-tinta">
-                    Nombre del producto
-                    <input
-                      value={productNameInput}
-                      onChange={(event) => setProductNameInput(event.target.value)}
-                      className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 px-4 text-base font-bold"
-                      placeholder="Ej. Leche 1L"
-                    />
-                  </label>
-                  <label className="block text-sm font-bold text-presucart-tinta">
-                    Código de barras o código manual
-                    <input
-                      inputMode="text"
-                      value={barcodeInput}
-                      onChange={(event) => setBarcodeInput(event.target.value)}
-                      className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 px-4 text-base font-bold"
-                      placeholder="Escaneado o escrito"
-                    />
-                  </label>
-                  <BarcodeScanner onDetect={handleBarcodeDetected} />
+              </div>
+              <form className="mt-5 space-y-4" onSubmit={handleAddItem}>
+                <label className="block font-bold text-presucart-tinta">
+                  Precio unitario CRC
+                  <input
+                    inputMode="numeric"
+                    value={unitPriceInput}
+                    onChange={(event) => setUnitPriceInput(event.target.value)}
+                    required
+                    className="mt-2 min-h-16 w-full rounded-2xl border border-slate-200 px-4 text-2xl font-black"
+                    placeholder="₡2.500"
+                  />
+                </label>
+                <QuantityField
+                  value={quantityInput}
+                  onChange={setQuantityInput}
+                  onDecrement={() => setQuickQuantity(-1)}
+                  onIncrement={() => setQuickQuantity(1)}
+                  onReset={resetQuickQuantity}
+                />
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="min-h-14 w-full rounded-2xl bg-emerald-600 px-5 py-4 text-lg font-black text-white disabled:bg-slate-300"
+                >
+                  {isSaving ? "Agregando..." : "Agregar al carrito"}
+                </button>
+                {undoAdd ? (
+                  <div className="rounded-2xl border-2 border-emerald-600 bg-emerald-50 p-4">
+                    <p className="text-sm font-bold text-emerald-900">Agregado: {undoAdd.label}</p>
+                    <button
+                      type="button"
+                      onClick={handleUndoAdd}
+                      disabled={isUndoingItemId === undoAdd.itemId}
+                      className="mt-3 min-h-12 w-full rounded-xl bg-presucart-tinta px-4 py-3 text-lg font-black text-white disabled:bg-slate-300"
+                    >
+                      {isUndoingItemId === undoAdd.itemId ? "Deshaciendo..." : "DESHACER"}
+                    </button>
+                  </div>
+                ) : null}
+                <div className="mt-5 space-y-4">
+                  {enablePriceScanner ? (
+                    <section id="price-scanner-panel" className="rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50 p-4">
+                      <h3 className="font-black text-presucart-tinta">Escáner local de precio</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">Captura una etiqueta solo cuando lo necesites; al ocultarlo se desmonta el escáner y se apaga la cámara.</p>
+                      <div className="mt-4">
+                        <OcrPriceScanner onSelectCandidate={handleOcrCandidate} />
+                      </div>
+                    </section>
+                  ) : null}
+                  {enableProductIdentity ? (
+                    <section id="product-identity-panel" className="rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50 p-4">
+                      <fieldset>
+                        <legend className="font-black text-presucart-tinta">Identificar producto (opcional)</legend>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">Si tenés tiempo, agregá nombre o código para reconocerlo después. El código no cambia el precio.</p>
+                        <div className="mt-4 space-y-3">
+                          <label className="block text-sm font-bold text-presucart-tinta">
+                            Nombre del producto
+                            <input
+                              value={productNameInput}
+                              onChange={(event) => setProductNameInput(event.target.value)}
+                              className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 px-4 text-base font-bold"
+                              placeholder="Ej. Leche 1L"
+                            />
+                          </label>
+                          <label className="block text-sm font-bold text-presucart-tinta">
+                            Código de barras o código manual
+                            <input
+                              inputMode="text"
+                              value={barcodeInput}
+                              onChange={(event) => setBarcodeInput(event.target.value)}
+                              className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 px-4 text-base font-bold"
+                              placeholder="Escaneado o escrito"
+                            />
+                          </label>
+                          <BarcodeScanner onDetect={handleBarcodeDetected} />
+                        </div>
+                      </fieldset>
+                    </section>
+                  ) : null}
                 </div>
-              </fieldset>
-              <QuantityField
-                value={quantityInput}
-                onChange={setQuantityInput}
-                onDecrement={() => setQuickQuantity(-1)}
-                onIncrement={() => setQuickQuantity(1)}
-                onReset={resetQuickQuantity}
-              />
-              {undoAdd ? (
-                <div className="rounded-2xl border-2 border-emerald-600 bg-emerald-50 p-4">
-                  <p className="text-sm font-bold text-emerald-900">Agregado: {undoAdd.label}</p>
-                  <button
-                    type="button"
-                    onClick={handleUndoAdd}
-                    disabled={isUndoingItemId === undoAdd.itemId}
-                    className="mt-3 min-h-12 w-full rounded-xl bg-presucart-tinta px-4 py-3 text-lg font-black text-white disabled:bg-slate-300"
-                  >
-                    {isUndoingItemId === undoAdd.itemId ? "Deshaciendo..." : "DESHACER"}
-                  </button>
-                </div>
-              ) : null}
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="min-h-14 w-full rounded-2xl bg-emerald-600 px-5 py-4 text-lg font-black text-white disabled:bg-slate-300"
-              >
-                {isSaving ? "Agregando..." : "Agregar al carrito"}
-              </button>
-            </form>
+              </form>
             </section>
           ) : null}
 
@@ -568,8 +651,13 @@ export default function PurchasePage() {
                             <button type="button" onClick={() => startEditing(item)} className="rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-presucart-tinta">
                               Editar
                             </button>
-                            <button type="button" onClick={() => handleDeleteItem(item.id)} className="rounded-full bg-red-50 px-4 py-2 text-sm font-bold text-red-700">
-                              Borrar
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteItem(item.id)}
+                              disabled={isDeletingItemId === item.id}
+                              className="rounded-full bg-red-50 px-4 py-2 text-sm font-bold text-red-700 disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                              {isDeletingItemId === item.id ? "Borrando..." : "Borrar"}
                             </button>
                           </div>
                         ) : null}
