@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { normalizeBarcodeScanResult, preferredBarcodeFormats } from "@/domain/barcodeScanner";
 
 type ScannerState = "idle" | "starting" | "ready" | "scanning";
@@ -36,21 +36,24 @@ export function BarcodeScanner({ onDetect }: BarcodeScannerProps) {
   const frameRef = useRef<number | null>(null);
   const isDetectingRef = useRef(false);
   const scanAttemptRef = useRef(0);
+  const scannerGenerationRef = useRef(0);
+  const onDetectRef = useRef(onDetect);
   const [scannerState, setScannerState] = useState<ScannerState>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const isCameraOpen = scannerState !== "idle";
 
   useEffect(() => {
-    return () => stopCamera();
-  }, []);
+    onDetectRef.current = onDetect;
+  }, [onDetect]);
 
-  function cancelScanLoop() {
+  const cancelScanLoop = useCallback(() => {
     if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
     frameRef.current = null;
     isDetectingRef.current = false;
-  }
+  }, []);
 
-  function stopCamera() {
+  const stopCamera = useCallback(() => {
+    scannerGenerationRef.current += 1;
     cancelScanLoop();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -58,7 +61,11 @@ export function BarcodeScanner({ onDetect }: BarcodeScannerProps) {
     if (videoRef.current) videoRef.current.srcObject = null;
     scanAttemptRef.current = 0;
     setScannerState("idle");
-  }
+  }, [cancelScanLoop]);
+
+  useEffect(() => {
+    return () => stopCamera();
+  }, [stopCamera]);
 
   async function openCamera() {
     if (typeof window === "undefined" || !window.BarcodeDetector) {
@@ -71,11 +78,15 @@ export function BarcodeScanner({ onDetect }: BarcodeScannerProps) {
       return;
     }
 
+    const generation = scannerGenerationRef.current + 1;
+    scannerGenerationRef.current = generation;
     setScannerState("starting");
     setMessage(null);
 
     try {
       const supportedFormats = await window.BarcodeDetector.getSupportedFormats?.();
+      if (scannerGenerationRef.current !== generation) return;
+
       const formats = supportedFormats
         ? preferredBarcodeFormats.filter((format) => supportedFormats.includes(format))
         : [...preferredBarcodeFormats];
@@ -92,37 +103,50 @@ export function BarcodeScanner({ onDetect }: BarcodeScannerProps) {
         video: { facingMode: { ideal: "environment" } },
         audio: false,
       });
+      if (scannerGenerationRef.current !== generation) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
+      if (scannerGenerationRef.current !== generation) {
+        if (streamRef.current === stream) streamRef.current = null;
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
       setScannerState("ready");
       setMessage("Apunta al código. Al detectarlo se llena solo este campo; el precio y la cantidad no cambian.");
-      startScanLoop();
+      startScanLoop(generation);
     } catch {
       stopCamera();
       setMessage("No pudimos abrir o usar la cámara. Revisa permisos del navegador o escribe el código manualmente.");
     }
   }
 
-  function startScanLoop() {
+  function startScanLoop(generation: number) {
     cancelScanLoop();
 
     const scanFrame = async () => {
       const detector = detectorRef.current;
       const video = videoRef.current;
 
-      if (!detector || !video || !streamRef.current) return;
+      if (scannerGenerationRef.current !== generation || !detector || !video || !streamRef.current) return;
 
       if (!isDetectingRef.current && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
         isDetectingRef.current = true;
         setScannerState("scanning");
         try {
           const results = await detector.detect(video);
+          if (scannerGenerationRef.current !== generation || !streamRef.current) return;
+
           const barcode = normalizeBarcodeScanResult(results[0]);
           if (barcode) {
-            onDetect(barcode);
+            onDetectRef.current(barcode);
             stopCamera();
             setMessage(null);
             return;
@@ -133,14 +157,18 @@ export function BarcodeScanner({ onDetect }: BarcodeScannerProps) {
             setMessage("Todavía no encontramos un código claro. Acércate, mejora la luz o escribe el código manualmente.");
           }
         } catch {
-          setMessage("No pudimos leer el código con esta cámara. Puedes cerrar y escribirlo manualmente.");
+          if (scannerGenerationRef.current === generation) {
+            setMessage("No pudimos leer el código con esta cámara. Puedes cerrar y escribirlo manualmente.");
+          }
         } finally {
-          isDetectingRef.current = false;
-          if (streamRef.current) setScannerState("ready");
+          if (scannerGenerationRef.current === generation) {
+            isDetectingRef.current = false;
+            if (streamRef.current) setScannerState("ready");
+          }
         }
       }
 
-      if (streamRef.current) frameRef.current = window.requestAnimationFrame(scanFrame);
+      if (scannerGenerationRef.current === generation && streamRef.current) frameRef.current = window.requestAnimationFrame(scanFrame);
     };
 
     frameRef.current = window.requestAnimationFrame(scanFrame);

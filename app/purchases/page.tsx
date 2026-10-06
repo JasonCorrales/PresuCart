@@ -17,14 +17,11 @@ export default function PurchasesPage() {
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
   const [user, setUser] = useState<User | null>(null);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => Boolean(supabase));
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!supabase) {
-      setIsLoading(false);
-      return;
-    }
+    if (!supabase) return;
 
     const client = supabase;
 
