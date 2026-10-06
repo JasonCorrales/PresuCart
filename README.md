@@ -95,9 +95,15 @@ Con Supabase configurado:
 24. Provocar un fallo de red al guardar y confirmar que el error muestra copia accionable en español en vez del mensaje técnico de Supabase, y que la UI no muestra un borrado de ítem como exitoso si Supabase lo rechaza.
 25. Cerrar sesión y verificar que las rutas de compra soliciten autenticación y que se limpian solo las claves locales `presucart:active-purchase-draft:*`, sin borrar almacenamiento ajeno.
 
+## Preparación para producción
+
+La checklist de salida, comandos completos, requisitos HTTPS/móvil y evidencia manual pendiente están en [`docs/production-readiness.md`](docs/production-readiness.md).
+
 ## Comandos de verificación
 
 ```bash
+npm run lint
+npm run typecheck
 npm run test
 npm run build
 ```

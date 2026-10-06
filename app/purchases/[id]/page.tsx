@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
@@ -19,6 +19,8 @@ import { formatCRC, formatSignedCRC } from "@/domain/money";
 import { normalizeSupabaseErrorMessage } from "@/domain/offline";
 import { getProductSnapshotLabel, hasProductIdentity, normalizeOptionalProductIdentity } from "@/domain/productIdentity";
 import { adjustQuantityInput, parsePositiveCRCAmount, parsePositiveQuantity } from "@/domain/purchaseInput";
+import { getPurchaseLifecycleIdentity, isSamePurchaseLifecycleIdentity, type PurchaseLifecycleIdentity } from "@/domain/purchaseLifecycle";
+import { calculatePurchaseStoredTotal, syncPurchaseStoredTotal, type PurchaseTotalSyncClient } from "@/domain/purchaseTotalSync";
 import { createBrowserSupabaseClient } from "@/services/supabase";
 import type { Product, Purchase, PurchaseItem } from "@/types/database";
 
@@ -30,6 +32,21 @@ type AlertCopy = {
 type UndoAddState = {
   itemId: string;
   label: string;
+};
+
+type PendingTotalSync = {
+  purchaseId: string;
+  ownerId: string;
+  items: PurchaseItem[];
+  totalAmount: number;
+  message: string;
+};
+
+type TotalSyncGuard = {
+  routePurchaseId: string;
+  purchaseId: string | null;
+  ownerId: string | null;
+  status: Purchase["status"] | null;
 };
 
 const UNDO_VISIBLE_MS = 7000;
@@ -53,7 +70,7 @@ export default function PurchasePage() {
   const [productNameInput, setProductNameInput] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
   const [message, setMessage] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => Boolean(supabase));
   const [isSaving, setIsSaving] = useState(false);
   const [undoAdd, setUndoAdd] = useState<UndoAddState | null>(null);
   const [isUndoingItemId, setIsUndoingItemId] = useState<string | null>(null);
@@ -63,69 +80,104 @@ export default function PurchasePage() {
   const [isUpdatingItemId, setIsUpdatingItemId] = useState<string | null>(null);
   const [isDeletingItemId, setIsDeletingItemId] = useState<string | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
-  const [isDraftRestored, setIsDraftRestored] = useState(false);
+  const [pendingTotalSync, setPendingTotalSync] = useState<PendingTotalSync | null>(null);
+  const [isRetryingTotalSync, setIsRetryingTotalSync] = useState(false);
+  const totalSyncGuardRef = useRef<TotalSyncGuard>({ routePurchaseId: params.id, purchaseId: null, ownerId: null, status: null });
+  const [loadedPurchaseIdentity, setLoadedPurchaseIdentity] = useState<PurchaseLifecycleIdentity | null>(null);
+  const [draftRestoredIdentity, setDraftRestoredIdentity] = useState<PurchaseLifecycleIdentity | null>(null);
   const [enablePriceScanner, setEnablePriceScanner] = useState(false);
   const [enableProductIdentity, setEnableProductIdentity] = useState(false);
 
   useEffect(() => {
-    if (!supabase) {
-      setIsLoading(false);
-      return;
-    }
+    if (!supabase) return;
 
+    let isCancelled = false;
     const client = supabase;
+    const purchaseId = params.id;
 
     async function loadPurchase() {
       const { data: userData } = await client.auth.getUser();
+      if (isCancelled) return;
+
+      setIsLoading(true);
+      setLoadedPurchaseIdentity(null);
       setUser(userData.user);
       if (!userData.user) {
         router.push("/auth");
+        setIsLoading(false);
         return;
       }
 
+      const identity = getPurchaseLifecycleIdentity(userData.user.id, purchaseId);
       const [{ data: purchaseData, error: purchaseError }, { data: itemData, error: itemError }] = await Promise.all([
-        client.from("purchases").select("*").eq("id", params.id).eq("owner_id", userData.user.id).single(),
-        client.from("purchase_items").select("*").eq("purchase_id", params.id).order("added_at", { ascending: false }),
+        client.from("purchases").select("*").eq("id", purchaseId).eq("owner_id", userData.user.id).single(),
+        client.from("purchase_items").select("*").eq("purchase_id", purchaseId).order("added_at", { ascending: false }),
       ]);
+      if (isCancelled) return;
 
       if (purchaseError || itemError) {
         setMessage(normalizeSupabaseErrorMessage(purchaseError ?? itemError, navigator.onLine));
       } else {
         setPurchase(purchaseData as Purchase);
         setItems((itemData ?? []) as PurchaseItem[]);
+        setLoadedPurchaseIdentity(identity);
       }
       setIsLoading(false);
     }
 
     loadPurchase();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [params.id, router, supabase]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !user) return;
 
-    let storage: Storage;
-    try {
-      storage = window.localStorage;
-    } catch {
-      setIsDraftRestored(true);
-      return;
+    let isCancelled = false;
+    const userId = user.id;
+    const purchaseId = params.id;
+    const identity = getPurchaseLifecycleIdentity(userId, purchaseId);
+
+    async function restoreActiveDraft() {
+      let storage: Storage;
+      try {
+        storage = window.localStorage;
+      } catch {
+        if (!isCancelled) setDraftRestoredIdentity(identity);
+        return;
+      }
+
+      const draft = readActivePurchaseDraft(storage, userId, purchaseId);
+      if (isCancelled) return;
+
+      if (draft) {
+        setUnitPriceInput(draft.unitPriceInput);
+        setQuantityInput(draft.quantityInput);
+        setProductNameInput(draft.productNameInput);
+        setBarcodeInput(draft.barcodeInput);
+        if (draft.unitPriceInput || draft.quantityInput !== "1" || draft.productNameInput || draft.barcodeInput) {
+          setMessage("Recuperamos lo que habías escrito antes de la interrupción. Revisa y guarda cuando tengas conexión.");
+        }
+      }
+      setDraftRestoredIdentity(identity);
     }
 
-    const draft = readActivePurchaseDraft(storage, user.id, params.id);
-    if (draft) {
-      setUnitPriceInput(draft.unitPriceInput);
-      setQuantityInput(draft.quantityInput);
-      setProductNameInput(draft.productNameInput);
-      setBarcodeInput(draft.barcodeInput);
-      if (draft.unitPriceInput || draft.quantityInput !== "1" || draft.productNameInput || draft.barcodeInput) {
-        setMessage("Recuperamos lo que habías escrito antes de la interrupción. Revisa y guarda cuando tengas conexión.");
-      }
-    }
-    setIsDraftRestored(true);
+    restoreActiveDraft();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [params.id, user]);
 
   useEffect(() => {
-    if (!isDraftRestored || purchase?.status !== "activa" || !user || typeof window === "undefined") return;
+    if (purchase?.status !== "activa" || !user || typeof window === "undefined") return;
+
+    const currentIdentity = getPurchaseLifecycleIdentity(user.id, params.id);
+    if (purchase.id !== params.id) return;
+    if (!isSamePurchaseLifecycleIdentity(loadedPurchaseIdentity, currentIdentity)) return;
+    if (!isSamePurchaseLifecycleIdentity(draftRestoredIdentity, currentIdentity)) return;
 
     try {
       const draft = normalizeActivePurchaseDraft({ unitPriceInput, quantityInput, productNameInput, barcodeInput });
@@ -133,7 +185,16 @@ export default function PurchasePage() {
     } catch {
       // Blocked localStorage should not break active shopping.
     }
-  }, [barcodeInput, isDraftRestored, productNameInput, purchase, quantityInput, unitPriceInput, user]);
+  }, [barcodeInput, draftRestoredIdentity, loadedPurchaseIdentity, params.id, productNameInput, purchase, quantityInput, unitPriceInput, user]);
+
+  useEffect(() => {
+    totalSyncGuardRef.current = {
+      routePurchaseId: params.id,
+      purchaseId: purchase?.id ?? null,
+      ownerId: user?.id ?? null,
+      status: purchase?.status ?? null,
+    };
+  }, [params.id, purchase, user]);
 
   useEffect(() => {
     if (!undoAdd) return;
@@ -150,13 +211,58 @@ export default function PurchasePage() {
     );
   }, [items, purchase]);
 
+  function isCurrentTotalSyncTarget(target: Pick<PendingTotalSync, "purchaseId" | "ownerId">) {
+    const guard = totalSyncGuardRef.current;
+    return guard.routePurchaseId === target.purchaseId && guard.purchaseId === target.purchaseId && guard.ownerId === target.ownerId && guard.status === "activa";
+  }
+
+  function isAnyPurchaseActionBusy() {
+    return Boolean(isSaving || isFinalizing || isRetryingTotalSync || isUndoingItemId || isUpdatingItemId || isDeletingItemId);
+  }
+
+  function totalSyncWarningCopy(issue: PendingTotalSync) {
+    return `El ítem sí quedó guardado, pero no pudimos actualizar el total guardado (${issue.message}). Tu pantalla usa los ítems actuales; el historial puede mostrar un total anterior hasta reintentar.`;
+  }
+
   async function syncStoredTotal(nextItems: PurchaseItem[]) {
-    if (!supabase || !purchase || purchase.status !== "activa") return;
-    const nextTotal = nextItems.reduce(
-      (total, item) => total + itemSubtotal({ unitPrice: item.unit_price_amount, quantity: item.quantity }),
-      0,
-    );
-    await supabase.from("purchases").update({ total_amount: nextTotal }).eq("id", purchase.id);
+    if (!supabase || !purchase || !user || purchase.status !== "activa" || purchase.id !== params.id) return;
+
+    const pending: PendingTotalSync = {
+      purchaseId: purchase.id,
+      ownerId: user.id,
+      items: nextItems.map((item) => ({ ...item })),
+      totalAmount: calculatePurchaseStoredTotal(nextItems),
+      message: "No pudimos guardar el total de la compra.",
+    };
+
+    const totalSyncClient = supabase as unknown as PurchaseTotalSyncClient;
+    const result = await syncPurchaseStoredTotal(totalSyncClient, pending);
+    if (!isCurrentTotalSyncTarget(pending)) return;
+
+    if (result.ok) {
+      setPendingTotalSync(null);
+      return;
+    }
+
+    setPendingTotalSync({ ...pending, totalAmount: result.totalAmount, message: result.message });
+  }
+
+  async function retryStoredTotalSync() {
+    if (!supabase || !pendingTotalSync || isAnyPurchaseActionBusy() || !isCurrentTotalSyncTarget(pendingTotalSync)) return;
+
+    const pending = pendingTotalSync;
+    setIsRetryingTotalSync(true);
+    const totalSyncClient = supabase as unknown as PurchaseTotalSyncClient;
+    const result = await syncPurchaseStoredTotal(totalSyncClient, pending);
+    if (!isCurrentTotalSyncTarget(pending)) return;
+    setIsRetryingTotalSync(false);
+
+    if (result.ok) {
+      setPendingTotalSync(null);
+      return;
+    }
+
+    setPendingTotalSync({ ...pending, totalAmount: result.totalAmount, message: result.message });
   }
 
   function setQuickQuantity(delta: number) {
@@ -449,6 +555,10 @@ export default function PurchasePage() {
   const currentAlert = summary ? alertCopy[summary.alertState] : alertCopy.normal;
   const isActive = purchase?.status === "activa";
   const isFinalized = purchase?.status === "finalizada";
+  const visiblePendingTotalSync =
+    pendingTotalSync && pendingTotalSync.purchaseId === params.id && pendingTotalSync.purchaseId === purchase?.id && pendingTotalSync.ownerId === user?.id && isActive
+      ? pendingTotalSync
+      : null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-md px-5 py-6">
@@ -500,6 +610,19 @@ export default function PurchasePage() {
           </section>
 
           {message ? <p className="rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-900">{message}</p> : null}
+          {visiblePendingTotalSync ? (
+            <section className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-950">
+              <p>{totalSyncWarningCopy(visiblePendingTotalSync)}</p>
+              <button
+                type="button"
+                onClick={retryStoredTotalSync}
+                disabled={isAnyPurchaseActionBusy() || !isActive}
+                className="mt-3 min-h-12 w-full rounded-xl bg-amber-600 px-4 py-3 text-base font-black text-white disabled:bg-slate-300"
+              >
+                {isRetryingTotalSync ? "Reintentando..." : "Reintentar guardar total"}
+              </button>
+            </section>
+          ) : null}
 
           {isActive ? (
             <section className="rounded-[2rem] bg-white p-5 shadow-xl">
