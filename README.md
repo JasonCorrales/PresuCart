@@ -1,6 +1,6 @@
 # PresuCart
 
-PresuCart es una PWA móvil en español para controlar el presupuesto durante compras de supermercado en colones costarricenses (CRC). La Fase 7 agrega escaneo opcional de códigos de barras con la cámara para identificar productos sin frenar el agregado rápido de precios.
+PresuCart es una PWA móvil en español para controlar el presupuesto durante compras de supermercado en colones costarricenses (CRC). La Fase 8 agrega resiliencia PWA/offline, mensajes de conectividad y conservación local de borradores activos sin implementar una cola de sincronización offline.
 
 ## Stack
 
@@ -36,7 +36,7 @@ Si faltan variables, la app no debe romper el build: las pantallas muestran una 
 
 El esquema usa UUID, `timestamptz`, montos enteros en colones y `purchase_items.subtotal_amount` generado como `unit_price_amount * quantity`. La migración de Fase 5 agrega guards de base de datos para que los ítems solo cambien mientras la compra está `activa` y para que una compra `finalizada` quede solo lectura y no se pueda borrar.
 
-## Uso de Fase 7
+## Uso de Fase 8
 
 1. Abrir `/auth` y crear cuenta o iniciar sesión con correo y contraseña.
 2. Ir a `/purchases/new`, ingresar un presupuesto CRC positivo y, opcionalmente, el nombre del supermercado.
@@ -56,6 +56,10 @@ El esquema usa UUID, `timestamptz`, montos enteros en colones y `purchase_items.
 16. Borrar ítems si se ingresaron por error.
 17. Presionar `Finalizar compra` cuando el checkout terminó; la app guarda `status = finalizada`, `finished_at` y conserva el total visible.
 18. Al reabrir una compra finalizada desde `/purchases`, la pantalla explica que queda solo lectura y bloquea agregar, editar, borrar y deshacer.
+19. Si perdés conexión, el aviso superior explica que podés seguir viendo la pantalla y que necesitás reconectar para guardar.
+20. Si estabas escribiendo un precio, cantidad, nombre o código en una compra activa, esos campos se conservan localmente para esa compra durante recarga/interrupción y se limpian después de agregar el ítem o finalizar.
+
+La app registra `/sw.js` de forma segura en el cliente para cachear solo una lista explícita de shell público: `/`, `/manifest.json` y `/icons/presucart.svg`. El service worker no cachea rutas dinámicas del mismo origen como `/purchases`, `/purchases/[id]`, RSC (`?_rsc`), APIs ni respuestas autenticadas; si una navegación falla sin conexión, el fallback es únicamente el inicio público cacheado. Las compras autenticadas no se pueden recargar ni mutar offline salvo que la página ya esté abierta en memoria: no hay cola de sincronización offline. Si una acción no se guarda, el borrador escrito se conserva localmente por usuario y compra para reconectar e intentar de nuevo. Al cerrar sesión, PresuCart limpia solo su namespace de borradores sin borrar almacenamiento ajeno.
 
 La cámara para códigos de barras usa el API nativo `BarcodeDetector` cuando está disponible y lee el video en vivo sin guardar imágenes ni frames. La captura de cámara para OCR de precios se usa solo como imagen temporal local: no se guarda en la base de datos, no se sube a Supabase y no se envía a servidores de PresuCart.
 
@@ -85,7 +89,11 @@ Con Supabase configurado:
 18. Finalizar la compra desde `/purchases/[id]` y confirmar que se mueve a `Compras finalizadas` en `/purchases`.
 19. Reabrir la compra finalizada y verificar que no aparezcan acciones para agregar, editar, borrar ni deshacer ítems.
 20. Si probás directo contra Supabase, confirmar que insertar/editar/borrar `purchase_items` de una compra `finalizada` falla por trigger y que borrar la compra finalizada también falla.
-21. Cerrar sesión y verificar que las rutas de compra soliciten autenticación.
+21. Desactivar conexión desde DevTools o modo avión y confirmar que aparece el aviso `Sin conexión`; al navegar/recargar offline, confirmar que el fallback disponible es el inicio público y que una compra autenticada no promete recarga offline.
+22. Escribir precio/cantidad/nombre/código en una compra activa, recargar antes de agregar y confirmar que el borrador se recupera con el mensaje en español cuando la compra autenticada vuelve a cargar.
+23. Reconectar, agregar el ítem y confirmar que el borrador local se limpia; recargar de nuevo no debe traer campos viejos.
+24. Provocar un fallo de red al guardar y confirmar que el error muestra copia accionable en español en vez del mensaje técnico de Supabase, y que la UI no muestra un borrado de ítem como exitoso si Supabase lo rechaza.
+25. Cerrar sesión y verificar que las rutas de compra soliciten autenticación y que se limpian solo las claves locales `presucart:active-purchase-draft:*`, sin borrar almacenamiento ajeno.
 
 ## Comandos de verificación
 
@@ -103,3 +111,4 @@ npm run build
 - Fase 5: historial autenticado de compras activas/finalizadas y checkout que deja compras finalizadas solo lectura en UI y base de datos.
 - Fase 6: identificación opcional de productos por nombre/código, reutilización por código, vínculo en ítems y snapshots visibles sin afectar el agregado rápido.
 - Fase 7: escáner opcional de códigos de barras con `BarcodeDetector`, fallback manual y apagado de cámara al cerrar/detectar.
+- Fase 8: service worker estático, estado de conexión, borrador local por compra activa y normalización de errores Supabase/red en español.

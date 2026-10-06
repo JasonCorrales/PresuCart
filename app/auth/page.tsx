@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { SessionHeader } from "@/components/SessionHeader";
 import { SetupNotice } from "@/components/SetupNotice";
+import { normalizeSupabaseErrorMessage } from "@/domain/offline";
 import { createBrowserSupabaseClient } from "@/services/supabase";
 
 export default function AuthPage() {
@@ -43,7 +44,7 @@ export default function AuthPage() {
     setIsSubmitting(false);
 
     if (result.error) {
-      setMessage(result.error.message);
+      setMessage(normalizeSupabaseErrorMessage(result.error, navigator.onLine));
       return;
     }
 

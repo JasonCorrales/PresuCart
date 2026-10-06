@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { PwaLifecycle } from "@/components/PwaLifecycle";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,7 +18,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es-CR">
-      <body>{children}</body>
+      <body>
+        <PwaLifecycle />
+        {children}
+      </body>
     </html>
   );
 }

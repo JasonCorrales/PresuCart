@@ -6,6 +6,15 @@ import { formatCRC, formatSignedCRC, parseCRC } from "@/domain/money";
 import { normalizeOptionalProductIdentity, getProductSnapshotLabel, hasProductIdentity } from "@/domain/productIdentity";
 import { adjustQuantityInput, normalizeOptionalText, parsePositiveCRCAmount, parsePositiveQuantity } from "@/domain/purchaseInput";
 import { getPurchaseAmountSignal, getPurchaseStoreLabel, groupPurchasesByStatus } from "@/domain/purchaseHistory";
+import {
+  buildActivePurchaseDraftKey,
+  clearPresuCartDraftNamespace,
+  isActivePurchaseDraftEmpty,
+  normalizeActivePurchaseDraft,
+  readActivePurchaseDraft,
+  writeActivePurchaseDraft,
+} from "@/domain/activePurchaseDraft";
+import { getNetworkStatusCopy, normalizeSupabaseErrorMessage, shouldServiceWorkerHandleRequest } from "@/domain/offline";
 import type { Purchase } from "@/types/database";
 
 describe("money utilities", () => {
@@ -174,6 +183,102 @@ describe("purchase history utilities", () => {
     expect(getPurchaseStoreLabel({ ...basePurchase, store_name_snapshot: "  Feria  " })).toBe("Feria");
     expect(getPurchaseAmountSignal(basePurchase)).toEqual({ available: 25000, isOverBudget: false });
     expect(getPurchaseAmountSignal({ ...basePurchase, total_amount: 80000 })).toEqual({ available: -5000, isOverBudget: true });
+  });
+});
+
+describe("active purchase draft utilities", () => {
+  it("scopes saved drafts by authenticated user and active purchase", () => {
+    expect(buildActivePurchaseDraftKey("user-1", "purchase-1")).toBe("presucart:active-purchase-draft:user-1:purchase-1");
+    expect(buildActivePurchaseDraftKey("user-2", "purchase-1")).not.toBe(buildActivePurchaseDraftKey("user-1", "purchase-1"));
+  });
+
+  it("normalizes only unsent add-item fields and detects empty drafts", () => {
+    const draft = normalizeActivePurchaseDraft({ unitPriceInput: " ₡2.500 ", quantityInput: "", productNameInput: "  Leche  ", barcodeInput: " 7 44 " });
+
+    expect(draft).toEqual({ unitPriceInput: "₡2.500", quantityInput: "1", productNameInput: "Leche", barcodeInput: "7 44" });
+    expect(isActivePurchaseDraftEmpty(draft)).toBe(false);
+    expect(isActivePurchaseDraftEmpty(normalizeActivePurchaseDraft({ unitPriceInput: "", quantityInput: "1", productNameInput: "", barcodeInput: "" }))).toBe(true);
+  });
+
+  it("writes, reads and clears only the PresuCart draft namespace", () => {
+    const storage = createMemoryStorage();
+    const draft = normalizeActivePurchaseDraft({ unitPriceInput: "2500", quantityInput: "2", productNameInput: "Leche", barcodeInput: "744" });
+
+    expect(writeActivePurchaseDraft(storage, "user-1", "purchase-1", draft)).toBe(true);
+    expect(readActivePurchaseDraft(storage, "user-1", "purchase-1")).toEqual(draft);
+    expect(readActivePurchaseDraft(storage, "user-2", "purchase-1")).toBeNull();
+
+    storage.setItem("unrelated", "keep");
+    storage.setItem("presucart:other-feature", "keep");
+    expect(clearPresuCartDraftNamespace(storage)).toBe(true);
+
+    expect(storage.getItem(buildActivePurchaseDraftKey("user-1", "purchase-1"))).toBeNull();
+    expect(storage.getItem("unrelated")).toBe("keep");
+    expect(storage.getItem("presucart:other-feature")).toBe("keep");
+  });
+
+  it("treats blocked draft storage as a recoverable no-op", () => {
+    const blockedStorage = createBlockedStorage();
+    const draft = normalizeActivePurchaseDraft({ unitPriceInput: "2500", quantityInput: "1" });
+
+    expect(writeActivePurchaseDraft(blockedStorage, "user-1", "purchase-1", draft)).toBe(false);
+    expect(readActivePurchaseDraft(blockedStorage, "user-1", "purchase-1")).toBeNull();
+    expect(clearPresuCartDraftNamespace(blockedStorage)).toBe(false);
+  });
+});
+
+function createMemoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key) => values.delete(key),
+    setItem: (key, value) => values.set(key, value),
+  };
+}
+
+function createBlockedStorage(): Storage {
+  const fail = () => {
+    throw new Error("localStorage blocked");
+  };
+  return {
+    get length() {
+      fail();
+      return 0;
+    },
+    clear: fail,
+    getItem: fail,
+    key: fail,
+    removeItem: fail,
+    setItem: fail,
+  };
+}
+
+describe("offline and network utilities", () => {
+  it("limits service worker caching to explicit public shell assets", () => {
+    expect(shouldServiceWorkerHandleRequest("https://example.com/", "GET", "https://example.com")).toBe(true);
+    expect(shouldServiceWorkerHandleRequest("https://example.com/manifest.json", "GET", "https://example.com")).toBe(true);
+    expect(shouldServiceWorkerHandleRequest("https://example.com/icons/presucart.svg", "GET", "https://example.com")).toBe(true);
+    expect(shouldServiceWorkerHandleRequest("https://example.com/purchases", "GET", "https://example.com")).toBe(false);
+    expect(shouldServiceWorkerHandleRequest("https://example.com/purchases/abc", "GET", "https://example.com")).toBe(false);
+    expect(shouldServiceWorkerHandleRequest("https://example.com/?_rsc=abc", "GET", "https://example.com")).toBe(false);
+    expect(shouldServiceWorkerHandleRequest("https://example.com/manifest.json", "POST", "https://example.com")).toBe(false);
+    expect(shouldServiceWorkerHandleRequest("https://demo.supabase.co/rest/v1/purchases", "GET", "https://example.com")).toBe(false);
+  });
+
+  it("normalizes offline, auth and generic errors into Spanish recovery copy", () => {
+    expect(normalizeSupabaseErrorMessage({ message: "Failed to fetch" }, false)).toBe("Sin conexión. Conservamos lo que escribiste; revisa tu internet e intenta de nuevo.");
+    expect(normalizeSupabaseErrorMessage({ message: "JWT expired" }, true)).toBe("Tu sesión necesita refrescarse. Inicia sesión de nuevo para continuar.");
+    expect(normalizeSupabaseErrorMessage({ message: "duplicate key value" }, true)).toBe("No se pudo completar la acción. Revisa los datos e intenta de nuevo.");
+  });
+
+  it("returns concise Spanish network status copy", () => {
+    expect(getNetworkStatusCopy(false).title).toBe("Sin conexión");
+    expect(getNetworkStatusCopy(true).title).toBe("Con conexión");
   });
 });
 
