@@ -93,7 +93,7 @@ Status: in progress
 
 Route: delegated implementation is required because Phase 8 touches multiple non-trivial files across app shell, components, domain utilities, tests, and documentation.
 Checks: use test-first where deterministic domain/browser-helper tests apply; run `npm run test` and `npm run build` before closing the phase.
-Delivery: no commit yet; user has authorized implementation, not git delivery.
+Delivery: user authorized commit and push. Implementation committed as `86ca763` (`feat: add offline resilience and compact shopping controls`) on `feature/presucart-phase-8`. Manual browser validation remains pending. The accumulated change exceeds the 400-line review heuristic; no PR has been created.
 Assessment: native assessment was unassessable due to undeclared untracked paths; followed the high-risk fallback with independent verification. Tests/build passed independently (33/33). Final service-worker activation syntax and mocked runtime checks passed: only old PresuCart shell caches are deleted; unrelated caches are preserved.
 
 - [x] Task 29: Add a static PWA service worker and safe registration for install/offline shell resilience.
