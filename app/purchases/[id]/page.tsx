@@ -87,6 +87,8 @@ export default function PurchasePage() {
   const [draftRestoredIdentity, setDraftRestoredIdentity] = useState<PurchaseLifecycleIdentity | null>(null);
   const [enablePriceScanner, setEnablePriceScanner] = useState(false);
   const [enableProductIdentity, setEnableProductIdentity] = useState(false);
+  const activeSummaryRef = useRef<HTMLElement | null>(null);
+  const [activeSummaryScrollRequest, setActiveSummaryScrollRequest] = useState(0);
 
   useEffect(() => {
     if (!supabase) return;
@@ -202,6 +204,16 @@ export default function PurchasePage() {
     const timeoutId = window.setTimeout(() => setUndoAdd(null), UNDO_VISIBLE_MS);
     return () => window.clearTimeout(timeoutId);
   }, [undoAdd]);
+
+  useEffect(() => {
+    if (!activeSummaryScrollRequest) return;
+
+    const summaryElement = activeSummaryRef.current;
+    if (!summaryElement || typeof summaryElement.scrollIntoView !== "function") return;
+
+    const prefersReducedMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    summaryElement.scrollIntoView({ block: "start", behavior: prefersReducedMotion ? "auto" : "smooth" });
+  }, [activeSummaryScrollRequest]);
 
   const summary = useMemo(() => {
     if (!purchase) return null;
@@ -423,6 +435,7 @@ export default function PurchasePage() {
     setProductNameInput("");
     setBarcodeInput("");
     clearActiveDraft(purchase.id);
+    setActiveSummaryScrollRequest((request) => request + 1);
     await syncStoredTotal(nextItems);
   }
 
@@ -552,6 +565,7 @@ export default function PurchasePage() {
   }
 
   const progressWidth = summary ? `${Math.min(summary.usedPercent, 100)}%` : "0%";
+  const progressFillClass = summary ? getProgressFillClass(summary.usedPercent) : getProgressFillClass(0);
   const currentAlert = summary ? alertCopy[summary.alertState] : alertCopy.normal;
   const isActive = purchase?.status === "activa";
   const isFinalized = purchase?.status === "finalizada";
@@ -575,7 +589,7 @@ export default function PurchasePage() {
         </section>
       ) : (
         <div className="space-y-3 sm:space-y-5">
-          <section className="rounded-[1.5rem] bg-presucart-tinta p-3 text-white shadow-xl sm:rounded-[2rem] sm:p-5">
+          <section ref={activeSummaryRef} className="rounded-[1.5rem] bg-presucart-tinta p-3 text-white shadow-xl sm:rounded-[2rem] sm:p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200 sm:text-sm sm:tracking-[0.2em]">Compra {purchase.status}</p>
@@ -601,7 +615,7 @@ export default function PurchasePage() {
               <Metric label="Gastado" value={formatCRC(summary.spent)} />
             </div>
             <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/20 sm:mt-5 sm:h-4">
-              <div className="h-full rounded-full bg-emerald-300" style={{ width: progressWidth }} />
+              <div className={`h-full rounded-full ${progressFillClass}`} style={{ width: progressWidth }} />
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4">
               <p className={`min-h-11 flex-1 rounded-2xl px-3 py-3 text-sm font-black ${currentAlert.className}`}>{currentAlert.label}</p>
@@ -801,6 +815,12 @@ export default function PurchasePage() {
       )}
     </main>
   );
+}
+
+function getProgressFillClass(usedPercent: number) {
+  if (usedPercent >= 90) return "bg-red-500";
+  if (usedPercent >= 70) return "bg-yellow-300";
+  return "bg-emerald-300";
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

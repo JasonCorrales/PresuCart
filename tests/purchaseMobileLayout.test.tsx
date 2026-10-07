@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Purchase, PurchaseItem } from "@/types/database";
 
 const push = vi.fn();
+const scrollIntoView = vi.fn();
 const router = { push };
 let supabaseClient: ReturnType<typeof createSupabaseClient>;
 
@@ -20,6 +21,8 @@ const { default: PurchasePage } = await import("@/app/purchases/[id]/page");
 describe("purchase page mobile layout", () => {
   beforeEach(() => {
     push.mockClear();
+    scrollIntoView.mockClear();
+    Element.prototype.scrollIntoView = scrollIntoView;
     window.localStorage.clear();
     supabaseClient = createSupabaseClient();
   });
@@ -48,11 +51,43 @@ describe("purchase page mobile layout", () => {
     expect(decrement.compareDocumentPosition(increment) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(increment.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it.each([
+    { spent: 69, expectedPercent: "69%", expectedClass: "bg-emerald-300" },
+    { spent: 70, expectedPercent: "70%", expectedClass: "bg-yellow-300" },
+    { spent: 89, expectedPercent: "89%", expectedClass: "bg-yellow-300" },
+    { spent: 90, expectedPercent: "90%", expectedClass: "bg-red-500" },
+  ])("colors the active purchase progress fill for $expectedPercent budget usage", async ({ spent, expectedPercent, expectedClass }) => {
+    supabaseClient = createSupabaseClient({ purchase: { budget_amount: 100 }, items: [{ unit_price_amount: spent, quantity: 1, subtotal_amount: spent }] });
+
+    const { container } = render(<PurchasePage />);
+
+    await screen.findByText(`${expectedPercent} usado`);
+    const progressFill = container.querySelector<HTMLElement>(`div[style="width: ${expectedPercent};"]`);
+
+    expect(progressFill).toBeTruthy();
+    expect(progressFill?.className).toContain(expectedClass);
+  });
+
+  it("scrolls the active purchase summary into view after a successful add", async () => {
+    render(<PurchasePage />);
+
+    const priceInput = await screen.findByLabelText("Precio unitario CRC");
+    fireEvent.change(priceInput, { target: { value: "2500" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Agregar al carrito" }).closest("form")!);
+
+    await waitFor(() => expect(screen.getByText("Agregado: ₡2.500 × 1")).toBeTruthy());
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect((scrollIntoView.mock.contexts[0] as HTMLElement).textContent).toContain("Compra activa");
+    expect((scrollIntoView.mock.contexts[0] as HTMLElement).textContent).toContain("Disponible");
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "smooth" });
+  });
 });
 
-function createSupabaseClient() {
-  const purchase = purchaseFixture();
-  const items = [itemFixture()];
+function createSupabaseClient(overrides: { purchase?: Partial<Purchase>; items?: Partial<PurchaseItem>[] } = {}) {
+  const purchase = purchaseFixture(overrides.purchase);
+  const items = overrides.items?.map((item) => itemFixture(item)) ?? [itemFixture()];
 
   return {
     auth: {
@@ -67,6 +102,36 @@ function createQuery(table: string, state: { purchase: Purchase; items: Purchase
     select: vi.fn(() => query),
     eq: vi.fn(() => query),
     order: vi.fn(async () => ({ data: state.items, error: null })),
+    insert: vi.fn((values: Partial<PurchaseItem>) => {
+      const item: PurchaseItem = {
+        id: "item-2",
+        purchase_id: values.purchase_id ?? state.purchase.id,
+        product_id: values.product_id ?? null,
+        product_name_snapshot: values.product_name_snapshot ?? null,
+        unit_price_amount: values.unit_price_amount ?? 0,
+        quantity: values.quantity ?? 1,
+        subtotal_amount: (values.unit_price_amount ?? 0) * (values.quantity ?? 1),
+        added_at: "2026-01-01T10:01:00.000Z",
+        created_at: "2026-01-01T10:01:00.000Z",
+        updated_at: "2026-01-01T10:01:00.000Z",
+      };
+      return {
+        select: vi.fn(() => ({
+          single: vi.fn(async () => ({ data: item, error: null })),
+        })),
+      };
+    }),
+    update: vi.fn((values: Partial<Purchase>) => ({
+      eq: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            select: vi.fn(() => ({
+              single: vi.fn(async () => ({ data: { id: state.purchase.id, total_amount: values.total_amount }, error: null })),
+            })),
+          })),
+        })),
+      })),
+    })),
     single: vi.fn(async () => {
       if (table !== "purchases") throw new Error(`Unexpected single() on ${table}`);
       return { data: state.purchase, error: null };
@@ -75,7 +140,7 @@ function createQuery(table: string, state: { purchase: Purchase; items: Purchase
   return query;
 }
 
-function purchaseFixture(): Purchase {
+function purchaseFixture(overrides: Partial<Purchase> = {}): Purchase {
   return {
     id: "purchase-1",
     owner_id: "user-1",
@@ -88,10 +153,11 @@ function purchaseFixture(): Purchase {
     finished_at: null,
     created_at: "2026-01-01T10:00:00.000Z",
     updated_at: "2026-01-01T10:00:00.000Z",
+    ...overrides,
   };
 }
 
-function itemFixture(): PurchaseItem {
+function itemFixture(overrides: Partial<PurchaseItem> = {}): PurchaseItem {
   return {
     id: "item-1",
     purchase_id: "purchase-1",
@@ -103,5 +169,6 @@ function itemFixture(): PurchaseItem {
     added_at: "2026-01-01T10:00:00.000Z",
     created_at: "2026-01-01T10:00:00.000Z",
     updated_at: "2026-01-01T10:00:00.000Z",
+    ...overrides,
   };
 }
