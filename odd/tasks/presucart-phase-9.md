@@ -30,6 +30,18 @@ Validate the MVP without adding product features. Current offline support is lim
   - User requested removal of the visible `Agregar precio` heading and explanatory text, plus smaller budget/spent/finalize summary. Preserve visible labels, dominant availability, accessible touch targets, calculations, actions, and default-hidden optional tools. No sticky overlay or persistence changes.
   - Route: delegated page/test changes; test-first rendered regression for removed copy, preserved totals/actions/order, and default-hidden optional panels; structural Tailwind spacing changes only. No commit/push authorized for this follow-up.
   - Checks: RED `npm run test -- tests/purchaseMobileLayout.test.tsx` failed on the visible `Agregar precio` heading before the UI change. GREEN `npm run test -- tests/purchaseMobileLayout.test.tsx tests/purchasePage.test.tsx` passed after the compact layout changes. Full follow-up verification commands passed: `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build`.
+- [x] 6. Keep the active purchase summary visible after adding an item on mobile.
+  - Status: completed for code and automated regression coverage; real mobile browser verification remains pending because jsdom cannot prove actual scroll position, keyboard behavior, or rendered viewport geometry.
+  - User reported that tapping `Agregar al carrito` left the page scrolled down, forcing manual scroll back to the `Compra activa` summary/disponible card.
+  - Implementation: successful item adds now request scrolling the active summary section into view after the add state updates, while validation failures, product resolution failures, insert errors, inactive purchases, undo behavior, optional tools, total sync, and finalized guards remain unchanged. Reduced-motion users get non-smooth scrolling.
+  - Route: delegated page/test change with independent verification.
+  - Checks: RED `npm test -- tests/purchaseMobileLayout.test.tsx` failed before implementation because `scrollIntoView` was not called. GREEN focused regression passed after implementation. Independent verification passed: `npm test -- tests/purchaseMobileLayout.test.tsx`, `npm run typecheck`, `npm run lint`, `npm run test` (11 files / 60 tests), and `npm run build`.
+- [x] 7. Color the active purchase progress bar by budget consumption threshold.
+  - Status: completed for code and automated regression coverage; real mobile browser visual confirmation remains pending.
+  - User requested green under 70%, yellow from 70%, and red from 90% consumption.
+  - Implementation: the progress fill keeps the existing `bg-emerald-300` below 70%, switches to `bg-yellow-300` at 70% through 89%, and switches to `bg-red-500` at 90% or more without changing budget math, item persistence, undo behavior, total sync, optional tools, scroll-to-summary behavior, or finalized guards.
+  - Route: delegated page/test change with independent verification.
+  - Checks: RED `npm test -- tests/purchaseMobileLayout.test.tsx` failed before implementation for 70%, 89%, and 90% because the fill remained green. GREEN focused regression passed after implementation. Independent verification passed: `npm test -- tests/purchaseMobileLayout.test.tsx`, `npm run typecheck`, `npm run lint`, `npm run test` (11 files / 64 tests), and `npm run build`.
 
 ## Acceptance and evidence
 
